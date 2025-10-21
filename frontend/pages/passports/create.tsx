@@ -1,13 +1,10 @@
 import ProtectedRoute from '../../components/ProtectedRoute'
-import Layout from '../../components/Layout'
-import SimplePassportForm from '../../components/SimplePassportForm'
+import MainApp from '../../components/MainApp'
 
 export default function CreatePassportPageWrapper() {
   return (
     <ProtectedRoute>
-      <Layout>
-        <SimplePassportForm />
-      </Layout>
+      <MainApp />
     </ProtectedRoute>
   )
 }
