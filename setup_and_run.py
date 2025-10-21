@@ -140,7 +140,7 @@ class ProjectSetup:
         print("   PostgreSQL:      localhost:5435")
         print("")
         print("🔑 УЧЕТНЫЕ ЗАПИСИ:")
-        print("   Администратор:   admin / admin123")
+        print("   Администратор:   admin / admin")
         print("   Пользователь:    testuser / test123")
         print("")
         print("📊 ЗАГРУЖЕННЫЕ ДАННЫЕ:")

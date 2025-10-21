@@ -50,7 +50,7 @@ class DataLoader:
             print("👑 Создаю суперпользователя админа...")
 
             # Создаем хеш пароля
-            password = "admin123"
+            password = "admin"
             password_hash = f"sha256${hashlib.sha256(password.encode()).hexdigest()}"
 
             admin = User(
@@ -214,7 +214,7 @@ class DataLoader:
             print("   API Docs: http://localhost:8000/docs")
             print("")
             print("🔑 Учетные записи:")
-            print("   Админ: admin / admin123")
+            print("   Админ: admin / admin")
             print("   Пользователь: testuser / test123")
 
             return True

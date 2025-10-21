@@ -51,7 +51,7 @@ def create_admin_user():
         # Создаем админа
         admin_username = "admin"
         admin_email = "admin@agb-passports.ru"
-        admin_password = "admin123"  # В продакшене использовать сильный пароль
+        admin_password = "admin"  # В продакшене использовать сильный пароль
         admin_full_name = "Супер Администратор"
 
         # Временно используем простой хеш для избежания проблем с bcrypt

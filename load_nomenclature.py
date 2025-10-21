@@ -120,7 +120,9 @@ def create_admin_user(db):
     if not admin_user:
         print("👑 Создаю суперпользователя админа...")
 
-        hashed_password = pwd_context.hash("admin123")
+        # Временно используем простой хэш для избежания проблем с bcrypt
+        import hashlib
+        hashed_password = f"sha256${hashlib.sha256('admin'.encode()).hexdigest()}"
 
         admin = User(
             username="admin",
@@ -133,7 +135,7 @@ def create_admin_user(db):
 
         db.add(admin)
         db.commit()
-        print("✅ Админ создан: admin / admin123")
+        print("✅ Админ создан: admin / admin")
     else:
         print("👑 Админ уже существует")
 
@@ -153,8 +155,8 @@ def main():
     db = Session()
 
     try:
-        # Создаем админа если его нет
-        create_admin_user(db)
+        # Временно отключаем создание админа для отладки
+        # create_admin_user(db)
 
         if load_nomenclature_from_excel(excel_file):
             print("🎉 Загрузка завершена успешно!")

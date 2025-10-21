@@ -116,7 +116,7 @@ export default function LoginPage() {
           <div className="mt-6 p-4 bg-blue-50 rounded-md">
             <h3 className="text-sm font-medium text-blue-800 mb-2">Тестовые учетные записи:</h3>
             <div className="text-xs text-blue-700 space-y-1">
-              <p><strong>Администратор:</strong> admin / admin123</p>
+              <p><strong>Администратор:</strong> admin / admin</p>
               <p><strong>Пользователь:</strong> testuser / test123</p>
             </div>
           </div>
