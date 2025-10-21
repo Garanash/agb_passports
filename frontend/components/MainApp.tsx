@@ -50,6 +50,11 @@ export default function MainApp() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [orderNumber, setOrderNumber] = useState('')
   const [createdPassports, setCreatedPassports] = useState<any[]>([])
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false)
+  const [users, setUsers] = useState<any[]>([])
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  const [editingUser, setEditingUser] = useState<any>(null)
+  const [showEditUserModal, setShowEditUserModal] = useState(false)
 
   const {
     register,
@@ -83,6 +88,12 @@ export default function MainApp() {
       }
     }
   }, [watchedNomenclatureId, nomenclature])
+
+  useEffect(() => {
+    if (activeTab === 'users' && user?.role === 'admin') {
+      loadUsers()
+    }
+  }, [activeTab, user?.role])
 
   const addToSelection = () => {
     if (!orderNumber || orderNumber.length < 6) {
@@ -244,13 +255,142 @@ export default function MainApp() {
     toast('Файл Excel экспортирован')
   }
 
-  const exportToPdf = async () => {
-    if (createdPassports.length === 0) {
-      toast('Сначала создайте паспорта')
+           const exportToPdf = async (passportIds?: number[]) => {
+             const idsToExport = passportIds || (createdPassports.length > 0 ? createdPassports.map(passport => passport.id) : [])
+             
+             if (idsToExport.length === 0) {
+               toast('Сначала создайте паспорта')
+               return
+             }
+
+             // Проверяем токен аутентификации
+             const token = localStorage.getItem('token')
+             if (!token) {
+               toast.error('Необходимо войти в систему')
+               router.push('/login')
+               return
+             }
+
+             try {
+               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/export/bulk/pdf`, {
+                 method: 'POST',
+                 headers: {
+                   'Content-Type': 'application/json',
+                   'Authorization': `Bearer ${token}`
+                 },
+                 body: JSON.stringify(idsToExport)
+               })
+
+               if (!response.ok) {
+                 if (response.status === 401) {
+                   toast.error('Сессия истекла. Необходимо войти в систему')
+                   localStorage.removeItem('token')
+                   router.push('/login')
+                   return
+                 }
+                 throw new Error('Ошибка при экспорте PDF')
+               }
+
+               // Создаем blob из ответа
+               const blob = await response.blob()
+               
+               // Создаем ссылку для скачивания
+               const url = window.URL.createObjectURL(blob)
+               const link = document.createElement('a')
+               link.href = url
+               link.download = `passports_${new Date().toISOString().split('T')[0]}.pdf`
+               document.body.appendChild(link)
+               link.click()
+               document.body.removeChild(link)
+               window.URL.revokeObjectURL(url)
+               
+               toast.success('PDF файл экспортирован')
+             } catch (error: any) {
+               console.error('Ошибка при экспорте PDF:', error)
+               toast.error(error.message || 'Ошибка при экспорте PDF')
+             }
+           }
+
+           const archivePassport = async (passportId: number) => {
+             const token = localStorage.getItem('token')
+             if (!token) {
+               toast.error('Необходимо войти в систему')
+               router.push('/login')
+               return
+             }
+
+             try {
+               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/${passportId}/archive`, {
+                 method: 'POST',
+                 headers: {
+                   'Authorization': `Bearer ${token}`
+                 }
+               })
+
+               if (!response.ok) {
+                 if (response.status === 401) {
+                   toast.error('Сессия истекла. Необходимо войти в систему')
+                   localStorage.removeItem('token')
+                   router.push('/login')
+                   return
+                 }
+                 throw new Error('Ошибка при архивировании паспорта')
+               }
+
+               toast.success('Паспорт архивирован')
+               refetchPassports()
+             } catch (error: any) {
+               console.error('Ошибка при архивировании паспорта:', error)
+               toast.error(error.message || 'Ошибка при архивировании паспорта')
+             }
+           }
+
+           const loadUsers = async () => {
+             const token = localStorage.getItem('token')
+             if (!token) {
+               toast.error('Необходимо войти в систему')
+               router.push('/login')
+               return
+             }
+
+             setIsLoadingUsers(true)
+             try {
+               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
+                 headers: {
+                   'Authorization': `Bearer ${token}`
+                 }
+               })
+
+               if (!response.ok) {
+                 if (response.status === 401) {
+                   toast.error('Сессия истекла. Необходимо войти в систему')
+                   localStorage.removeItem('token')
+                   router.push('/login')
+                   return
+                 }
+                 throw new Error('Ошибка при загрузке пользователей')
+               }
+
+               const usersData = await response.json()
+               setUsers(usersData)
+             } catch (error: any) {
+               console.error('Ошибка при загрузке пользователей:', error)
+               toast.error(error.message || 'Ошибка при загрузке пользователей')
+             } finally {
+               setIsLoadingUsers(false)
+             }
+           }
+
+  const editUser = (user: any) => {
+    setEditingUser(user)
+    setShowEditUserModal(true)
+  }
+
+  const deleteUser = async (userId: number) => {
+    if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
       return
     }
 
-    // Проверяем токен аутентификации
     const token = localStorage.getItem('token')
     if (!token) {
       toast.error('Необходимо войти в систему')
@@ -259,16 +399,11 @@ export default function MainApp() {
     }
 
     try {
-      // Получаем ID созданных паспортов
-      const passportIds = createdPassports.map(passport => passport.id)
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/export/bulk/pdf`, {
-        method: 'POST',
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/${userId}`, {
+        method: 'DELETE',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(passportIds)
+        }
       })
 
       if (!response.ok) {
@@ -278,26 +413,14 @@ export default function MainApp() {
           router.push('/login')
           return
         }
-        throw new Error('Ошибка при экспорте PDF')
+        throw new Error('Ошибка при удалении пользователя')
       }
 
-      // Создаем blob из ответа
-      const blob = await response.blob()
-      
-      // Создаем ссылку для скачивания
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `passports_${orderNumber}_${new Date().toISOString().split('T')[0]}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      toast.success('PDF файл экспортирован')
+      toast.success('Пользователь удален')
+      loadUsers() // Перезагружаем список
     } catch (error: any) {
-      console.error('Ошибка при экспорте PDF:', error)
-      toast.error(error.message || 'Ошибка при экспорте PDF')
+      console.error('Ошибка при удалении пользователя:', error)
+      toast.error(error.message || 'Ошибка при удалении пользователя')
     }
   }
 
@@ -573,7 +696,7 @@ export default function MainApp() {
                           Excel
                         </button>
                         <button
-                          onClick={exportToPdf}
+                          onClick={() => exportToPdf()}
                           className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
                         >
                           <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
@@ -624,7 +747,7 @@ export default function MainApp() {
                         Excel
                       </button>
                       <button
-                        onClick={exportToPdf}
+                        onClick={() => exportToPdf()}
                         className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
                       >
                         <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
@@ -658,22 +781,114 @@ export default function MainApp() {
             </div>
           )}
 
-          {activeTab === 'archive' && (
-            <div className="max-w-6xl mx-auto">
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Архив паспортов</h1>
-                <p className="text-gray-600 mt-1">Просмотр всех созданных паспортов</p>
-              </div>
+                 {activeTab === 'archive' && (
+                   <div className="max-w-6xl mx-auto">
+                     <div className="mb-6">
+                       <h1 className="text-2xl font-bold text-gray-900">Архив паспортов</h1>
+                       <p className="text-gray-600 mt-1">Просмотр всех созданных паспортов</p>
+                     </div>
 
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="text-center py-12">
-                  <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Архив паспортов</h3>
-                  <p className="text-gray-600">Здесь будут отображаться все созданные паспорта</p>
-                </div>
-              </div>
-            </div>
-          )}
+                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                       {passports.length === 0 ? (
+                         <div className="text-center py-12">
+                           <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                           <h3 className="text-lg font-medium text-gray-900 mb-2">Архив пуст</h3>
+                           <p className="text-gray-600">Создайте паспорта, чтобы они появились в архиве</p>
+                         </div>
+                       ) : (
+                         <div className="space-y-4">
+                           <div className="flex items-center justify-between">
+                             <h3 className="text-lg font-semibold text-gray-900">
+                               Всего паспортов: {passports.length}
+                             </h3>
+                             <div className="flex space-x-2">
+                               <button
+                                 onClick={() => {
+                                   const allIds = passports.map(p => p.id)
+                                   exportToPdf(allIds)
+                                 }}
+                                 className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                               >
+                                 <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                                 Экспорт всех в PDF
+                               </button>
+                             </div>
+                           </div>
+                           
+                           <div className="overflow-x-auto">
+                             <table className="min-w-full divide-y divide-gray-200">
+                               <thead className="bg-gray-50">
+                                 <tr>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Номер паспорта
+                                   </th>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Номенклатура
+                                   </th>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Номер заказа
+                                   </th>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Статус
+                                   </th>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Создан
+                                   </th>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                     Действия
+                                   </th>
+                                 </tr>
+                               </thead>
+                               <tbody className="bg-white divide-y divide-gray-200">
+                                 {passports.map((passport) => (
+                                   <tr key={passport.id} className="hover:bg-gray-50">
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                       {passport.passport_number}
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                       {passport.nomenclature?.name || 'Не указано'}
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                       {passport.order_number}
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap">
+                                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                         passport.status === 'active' 
+                                           ? 'bg-green-100 text-green-800' 
+                                           : 'bg-gray-100 text-gray-800'
+                                       }`}>
+                                         {passport.status === 'active' ? 'Активный' : 'Архивный'}
+                                       </span>
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                       {new Date(passport.created_at).toLocaleDateString('ru-RU')}
+                                     </td>
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                       <button
+                                         onClick={() => exportToPdf([passport.id])}
+                                         className="text-blue-600 hover:text-blue-900 mr-3"
+                                       >
+                                         PDF
+                                       </button>
+                                       {passport.status === 'active' && (
+                                         <button
+                                           onClick={() => archivePassport(passport.id)}
+                                           className="text-orange-600 hover:text-orange-900"
+                                         >
+                                           Архивировать
+                                         </button>
+                                       )}
+                                     </td>
+                                   </tr>
+                                 ))}
+                               </tbody>
+                             </table>
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   </div>
+                 )}
 
           {activeTab === 'users' && user?.role === 'admin' && (
             <div className="max-w-6xl mx-auto">
@@ -683,16 +898,418 @@ export default function MainApp() {
               </div>
 
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="text-center py-12">
-                  <UserGroupIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Управление пользователями</h3>
-                  <p className="text-gray-600">Здесь будет интерфейс управления пользователями</p>
+                <div className="mb-6">
+                  <button
+                    onClick={() => setShowCreateUserModal(true)}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Создать пользователя
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Имя пользователя
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Полное имя
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Роль
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Статус
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Последний вход
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Действия
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {isLoadingUsers ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center">
+                              <div className="loading-spinner h-4 w-4 mr-2"></div>
+                              Загрузка пользователей...
+                            </div>
+                          </td>
+                        </tr>
+                      ) : users.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                            Пользователи не найдены
+                          </td>
+                        </tr>
+                      ) : (
+                        users.map((userItem) => (
+                          <tr key={userItem.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {userItem.username}
+                              {userItem.id === user?.id && (
+                                <span className="ml-2 text-xs text-blue-600">(Вы)</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {userItem.full_name || 'Не указано'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {userItem.email || 'Не указано'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                userItem.role === 'admin' 
+                                  ? 'bg-purple-100 text-purple-800' 
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {userItem.role === 'admin' ? 'Администратор' : 'Пользователь'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                userItem.is_active 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-red-100 text-red-800'
+                              }`}>
+                                {userItem.is_active ? 'Активный' : 'Заблокирован'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {userItem.last_login 
+                                ? new Date(userItem.last_login).toLocaleDateString('ru-RU')
+                                : 'Никогда'
+                              }
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              {userItem.id === user?.id ? (
+                                <span className="text-gray-400">Текущий пользователь</span>
+                              ) : (
+                                <div className="flex space-x-2">
+                                  <button 
+                                    onClick={() => editUser(userItem)}
+                                    className="text-blue-600 hover:text-blue-900"
+                                  >
+                                    Редактировать
+                                  </button>
+                                  <button 
+                                    onClick={() => deleteUser(userItem.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Модальное окно создания пользователя */}
+      {showCreateUserModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Создать пользователя</h3>
+                <button
+                  onClick={() => setShowCreateUserModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target as HTMLFormElement)
+                const username = formData.get('username') as string
+                const password = formData.get('password') as string
+                const fullName = formData.get('fullName') as string
+                const role = formData.get('role') as string
+
+                const token = localStorage.getItem('token')
+                if (!token) {
+                  toast.error('Необходимо войти в систему')
+                  return
+                }
+
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                      username,
+                      password,
+                      full_name: fullName,
+                      role: role || 'user'
+                    })
+                  })
+
+                  if (!response.ok) {
+                    if (response.status === 401) {
+                      toast.error('Сессия истекла. Необходимо войти в систему')
+                      localStorage.removeItem('token')
+                      router.push('/login')
+                      return
+                    }
+                    const errorData = await response.json()
+                    throw new Error(errorData.detail || 'Ошибка при создании пользователя')
+                  }
+
+                  toast.success('Пользователь создан успешно')
+                  setShowCreateUserModal(false)
+                  loadUsers() // Перезагружаем список пользователей
+                } catch (error: any) {
+                  console.error('Ошибка при создании пользователя:', error)
+                  toast.error(error.message || 'Ошибка при создании пользователя')
+                }
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя пользователя *
+                    </label>
+                    <input
+                      type="text"
+                      name="username"
+                      required
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите имя пользователя"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Пароль *
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      required
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите пароль"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Полное имя
+                    </label>
+                    <input
+                      type="text"
+                      name="fullName"
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите полное имя"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Роль
+                    </label>
+                    <select
+                      name="role"
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="user">Пользователь</option>
+                      <option value="admin">Администратор</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateUserModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    Создать
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно редактирования пользователя */}
+      {showEditUserModal && editingUser && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Редактировать пользователя</h3>
+                <button
+                  onClick={() => {
+                    setShowEditUserModal(false)
+                    setEditingUser(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target as HTMLFormElement)
+                const username = formData.get('username') as string
+                const password = formData.get('password') as string
+                const fullName = formData.get('fullName') as string
+                const role = formData.get('role') as string
+
+                const token = localStorage.getItem('token')
+                if (!token) {
+                  toast.error('Необходимо войти в систему')
+                  return
+                }
+
+                try {
+                  const updateData: any = {
+                    username,
+                    full_name: fullName,
+                    role: role || 'user'
+                  }
+
+                  // Добавляем пароль только если он указан
+                  if (password && password.trim()) {
+                    updateData.password = password
+                  }
+
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/${editingUser.id}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(updateData)
+                  })
+
+                  if (!response.ok) {
+                    if (response.status === 401) {
+                      toast.error('Сессия истекла. Необходимо войти в систему')
+                      localStorage.removeItem('token')
+                      router.push('/login')
+                      return
+                    }
+                    const errorData = await response.json()
+                    throw new Error(errorData.detail || 'Ошибка при обновлении пользователя')
+                  }
+
+                  toast.success('Пользователь обновлен успешно')
+                  setShowEditUserModal(false)
+                  setEditingUser(null)
+                  loadUsers() // Перезагружаем список пользователей
+                } catch (error: any) {
+                  console.error('Ошибка при обновлении пользователя:', error)
+                  toast.error(error.message || 'Ошибка при обновлении пользователя')
+                }
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Имя пользователя *
+                    </label>
+                    <input
+                      type="text"
+                      name="username"
+                      required
+                      defaultValue={editingUser.username}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите имя пользователя"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Пароль (оставьте пустым, чтобы не изменять)
+                    </label>
+                    <input
+                      type="password"
+                      name="password"
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите новый пароль"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Полное имя
+                    </label>
+                    <input
+                      type="text"
+                      name="fullName"
+                      defaultValue={editingUser.full_name || ''}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите полное имя"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Роль
+                    </label>
+                    <select
+                      name="role"
+                      defaultValue={editingUser.role}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="user">Пользователь</option>
+                      <option value="admin">Администратор</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditUserModal(false)
+                      setEditingUser(null)
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    Сохранить
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

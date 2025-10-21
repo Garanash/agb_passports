@@ -378,25 +378,40 @@ async def create_bulk_passports(
         raise HTTPException(status_code=500, detail=f"Ошибка массового создания паспортов: {str(e)}")
 
 @router.post("/export/bulk/pdf")
-def export_bulk_pdf(
+async def export_bulk_pdf(
     passport_ids: List[int],
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_async_db)
 ):
     """Экспорт выбранных паспортов в один PDF"""
     if not passport_ids:
         raise HTTPException(status_code=400, detail="Список паспортов пуст")
     try:
-        passports = db.query(VedPassport).filter(VedPassport.id.in_(passport_ids)).all()
+        from sqlalchemy import select
+        passports_query = select(VedPassport).where(VedPassport.id.in_(passport_ids))
+        result = await db.execute(passports_query)
+        passports = result.scalars().all()
+        
         if not passports:
             raise HTTPException(status_code=404, detail="Паспорта не найдены")
-        pdf_bytes = generate_bulk_passports_pdf(passports)
+        
+        # Проверяем права доступа
+        accessible_passports = []
+        for passport in passports:
+            if passport.created_by == current_user.id or current_user.role == "admin":
+                accessible_passports.append(passport)
+        
+        if not accessible_passports:
+            raise HTTPException(status_code=403, detail="Нет доступа к указанным паспортам")
+        
+        pdf_bytes = generate_bulk_passports_pdf(accessible_passports)
         return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers={
             "Content-Disposition": "attachment; filename=ved_passports.pdf"
         })
     except HTTPException:
         raise
     except Exception as e:
+        print(f"Ошибка при экспорте PDF: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка экспорта PDF: {str(e)}")
 
 @router.post("/export/created/pdf", response_class=StreamingResponse)

@@ -14,9 +14,9 @@ from reportlab.lib.utils import ImageReader
 def create_logo_image():
     """Создает изображение логотипа из PNG файла"""
     try:
-        # Проверяем, существует ли файл logo.png в текущей директории
+        # Проверяем, существует ли файл logo.png в статической папке
         import os
-        logo_path = 'logo.png'
+        logo_path = os.path.join('static', 'logo.png')
         if os.path.exists(logo_path):
             return logo_path
         else:
@@ -319,8 +319,8 @@ def create_passport_content_without_header(passport, normal_font, normal_style):
     cell_style = ParagraphStyle(
         'CellText',
         parent=normal_style,
-        fontSize=6,  # Уменьшенный размер шрифта
-        leading=7,  # Уменьшенный межстрочный интервал
+        fontSize=7,
+        leading=9,
         spaceBefore=0,
         spaceAfter=0,
         alignment=1,  # CENTER
@@ -348,10 +348,10 @@ def create_passport_content_without_header(passport, normal_font, normal_style):
     ]
     
     # Создаем основную таблицу (без дублирующей рамки) с правильными размерами
-    table = Table(passport_data, colWidths=[38*mm, 38*mm, 48*mm, 38*mm])
+    table = Table(passport_data, colWidths=[40*mm, 40*mm, 50*mm, 40*mm])
     table.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), normal_font),
-        ('FONTSIZE', (0, 0), (-1, -1), 6),  # Уменьшенный размер шрифта
+        ('FONTSIZE', (0, 0), (-1, -1), 7),  # Уменьшенный размер шрифта
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -362,10 +362,10 @@ def create_passport_content_without_header(passport, normal_font, normal_style):
         ('SPAN', (0, 4), (3, 4)),  # Объединяем ячейку "www.almazgeobur.ru" по всей ширине
         ('ALIGN', (0, 4), (3, 4), 'CENTER'),  # Центрируем "www.almazgeobur.ru"
         ('ENCODING', (0, 0), (-1, -1), 'utf-8'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 1),  # Уменьшенные отступы
-        ('RIGHTPADDING', (0, 0), (-1, -1), 1),
-        ('TOPPADDING', (0, 0), (-1, -1), 1),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),  # Отступы для лучшего отображения
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
     ]))
     
     story.append(table)
@@ -379,14 +379,16 @@ def generate_bulk_passports_pdf(passports):
     # Создаем PDF в памяти
     buffer = io.BytesIO()
     
-    # Устанавливаем отступы страницы для размещения 3 паспортов
+    # Устанавливаем отступы страницы
+    page_width, page_height = A4
+    margin = 20
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=15*mm,
-        rightMargin=15*mm,
-        topMargin=15*mm,
-        bottomMargin=15*mm
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin
     )
     
     # Настраиваем шрифты
@@ -397,10 +399,28 @@ def generate_bulk_passports_pdf(passports):
     
     story = []
     
-    # Контактная информация
+    # Добавляем общий заголовок только один раз
     contact_info = """ООО "Алмазгеобур" 125362, г. Москва, улица Водников, дом 2, стр. 14, оф. 11, тел.:+7 495 229 82 94
 LLP "Almazgeobur" 125362, Moscow, Vodnikov Street, 2, building. 14, of. 11, tel.:+7 495 229 82 94,
 e-mail: contact@almazgeobur.ru"""
+
+    # Создаем заголовочную таблицу
+    header_data = [[None, contact_info]]
+    logo_img = create_logo_image()
+    if logo_img:
+        logo_cell = Image(logo_img, width=40*mm, height=12*mm)
+        header_data[0][0] = logo_cell
+
+    header_table = Table(header_data, colWidths=[45*mm, 143*mm])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), normal_font),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+        ('ALIGN', (1, 0), (1, 0), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ENCODING', (0, 0), (-1, -1), 'utf-8'),
+    ]))
     
     # Группируем паспорта по 3 на страницу
     for i in range(0, len(passports), 3):
@@ -409,48 +429,26 @@ e-mail: contact@almazgeobur.ru"""
         for j, passport in enumerate(passport_group):
             print(f"📄 Обрабатываем паспорт {j+1} в группе: {passport.passport_number}")
             
-            # Создаем заголовочную таблицу с логотипом для каждого паспорта
-            header_data = [[None, contact_info]]
-            logo_img = create_logo_image()
-            if logo_img:
-                logo_cell = Image(logo_img, width=35*mm, height=10*mm)
-                header_data[0][0] = logo_cell
-
-            header_table = Table(header_data, colWidths=[40*mm, 145*mm])
-            header_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (-1, -1), normal_font),
-                ('FONTSIZE', (0, 0), (-1, -1), 6),  # Уменьшенный размер шрифта
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-                ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-                ('ALIGN', (1, 0), (1, 0), 'LEFT'),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('ENCODING', (0, 0), (-1, -1), 'utf-8'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 2),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 2),
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ]))
-            
             # Создаем содержимое паспорта без заголовка
             passport_content = create_passport_content_without_header(passport, normal_font, normal_style)
             
             # Создаем полный паспорт с заголовком и общей рамкой
-            full_passport = Table([[header_table], [Spacer(1, 5*mm)], [passport_content]], colWidths=[185*mm])
+            full_passport = Table([[header_table], [Spacer(1, 8)], [passport_content]], colWidths=[188*mm])
             full_passport.setStyle(TableStyle([
                 ('BOX', (0, 0), (-1, -1), 1, colors.black),  # Общая рамка вокруг всего паспорта
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),  # Центрируем все содержимое
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),  # Вертикальное центрирование
-                ('LEFTPADDING', (0, 0), (-1, -1), 3),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-                ('TOPPADDING', (0, 0), (-1, -1), 3),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
             ]))
             
             story.append(full_passport)
 
             # Добавляем интервал между паспортами
             if j < len(passport_group) - 1:
-                story.append(Spacer(1, 5*mm))
+                story.append(Spacer(1, 8*mm))
 
         # Добавляем переход на новую страницу после каждой группы из 3 паспортов
         if i + 3 < len(passports):
