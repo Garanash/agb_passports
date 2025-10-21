@@ -255,95 +255,95 @@ export default function MainApp() {
     toast('Файл Excel экспортирован')
   }
 
-           const exportToPdf = async (passportIds?: number[]) => {
-             const idsToExport = passportIds || (createdPassports.length > 0 ? createdPassports.map(passport => passport.id) : [])
-             
-             if (idsToExport.length === 0) {
-               toast('Сначала создайте паспорта')
-               return
-             }
+  const exportToPdf = async (passportIds?: number[]) => {
+    const idsToExport = passportIds || (createdPassports.length > 0 ? createdPassports.map(passport => passport.id) : [])
+    
+    if (idsToExport.length === 0) {
+      toast('Сначала создайте паспорта')
+      return
+    }
 
-             // Проверяем токен аутентификации
-             const token = localStorage.getItem('token')
-             if (!token) {
-               toast.error('Необходимо войти в систему')
-               router.push('/login')
-               return
-             }
+    // Проверяем токен аутентификации
+    const token = localStorage.getItem('token')
+    if (!token) {
+      toast.error('Необходимо войти в систему')
+      router.push('/login')
+      return
+    }
 
-             try {
-               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/export/bulk/pdf`, {
-                 method: 'POST',
-                 headers: {
-                   'Content-Type': 'application/json',
-                   'Authorization': `Bearer ${token}`
-                 },
-                 body: JSON.stringify(idsToExport)
-               })
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/export/bulk/pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(idsToExport)
+      })
 
-               if (!response.ok) {
-                 if (response.status === 401) {
-                   toast.error('Сессия истекла. Необходимо войти в систему')
-                   localStorage.removeItem('token')
-                   router.push('/login')
-                   return
-                 }
-                 throw new Error('Ошибка при экспорте PDF')
-               }
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Сессия истекла. Необходимо войти в систему')
+          localStorage.removeItem('token')
+          router.push('/login')
+          return
+        }
+        throw new Error('Ошибка при экспорте PDF')
+      }
 
-               // Создаем blob из ответа
-               const blob = await response.blob()
-               
-               // Создаем ссылку для скачивания
-               const url = window.URL.createObjectURL(blob)
-               const link = document.createElement('a')
-               link.href = url
-               link.download = `passports_${new Date().toISOString().split('T')[0]}.pdf`
-               document.body.appendChild(link)
-               link.click()
-               document.body.removeChild(link)
-               window.URL.revokeObjectURL(url)
-               
-               toast.success('PDF файл экспортирован')
-             } catch (error: any) {
-               console.error('Ошибка при экспорте PDF:', error)
-               toast.error(error.message || 'Ошибка при экспорте PDF')
-             }
-           }
+      // Создаем blob из ответа
+      const blob = await response.blob()
+      
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `passports_${new Date().toISOString().split('T')[0]}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('PDF файл экспортирован')
+    } catch (error: any) {
+      console.error('Ошибка при экспорте PDF:', error)
+      toast.error(error.message || 'Ошибка при экспорте PDF')
+    }
+  }
 
-           const archivePassport = async (passportId: number) => {
-             const token = localStorage.getItem('token')
-             if (!token) {
-               toast.error('Необходимо войти в систему')
-               router.push('/login')
-               return
-             }
+  const archivePassport = async (passportId: number) => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      toast.error('Необходимо войти в систему')
+      router.push('/login')
+      return
+    }
 
-             try {
-               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/${passportId}/archive`, {
-                 method: 'POST',
-                 headers: {
-                   'Authorization': `Bearer ${token}`
-                 }
-               })
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/${passportId}/archive`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
 
-               if (!response.ok) {
-                 if (response.status === 401) {
-                   toast.error('Сессия истекла. Необходимо войти в систему')
-                   localStorage.removeItem('token')
-                   router.push('/login')
-                   return
-                 }
-                 throw new Error('Ошибка при архивировании паспорта')
-               }
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Сессия истекла. Необходимо войти в систему')
+          localStorage.removeItem('token')
+          router.push('/login')
+          return
+        }
+        throw new Error('Ошибка при архивировании паспорта')
+      }
 
-               toast.success('Паспорт архивирован')
-               refetchPassports()
-             } catch (error: any) {
-               console.error('Ошибка при архивировании паспорта:', error)
-               toast.error(error.message || 'Ошибка при архивировании паспорта')
-             }
-           }
+      toast.success('Паспорт архивирован')
+      refetchPassports()
+    } catch (error: any) {
+      console.error('Ошибка при архивировании паспорта:', error)
+      toast.error(error.message || 'Ошибка при архивировании паспорта')
+    }
+  }
 
   const loadUsers = async () => {
     const token = localStorage.getItem('token')
