@@ -35,7 +35,7 @@ class VedPassportSchema(BaseModel):
     status: str = "active"
     order_number: str
     quantity: int = 1
-    created_by: int
+    created_by: Optional[int]
     nomenclature_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None

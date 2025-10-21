@@ -27,6 +27,35 @@ from backend.database import get_db, get_async_db
 
 router = APIRouter()
 
+@router.get("/{passport_id:path}", response_model=VedPassportSchema)
+def get_ved_passport(
+    passport_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение конкретного паспорта ВЭД по ID"""
+    try:
+        # Проверяем, является ли passport_id числом
+        if not passport_id.isdigit():
+            raise HTTPException(status_code=404, detail="Паспорт не найден")
+
+        passport_id_int = int(passport_id)
+        passport = db.query(VedPassport).filter(VedPassport.id == passport_id_int).first()
+
+        if not passport:
+            raise HTTPException(status_code=404, detail="Паспорт не найден")
+
+        if passport.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+        return passport
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка при получении паспорта: {e}")
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
 @router.get("/nomenclature/", response_model=List[VEDNomenclatureSchema])
 def get_ved_nomenclature(
     current_user: User = Depends(get_current_user),
@@ -74,7 +103,7 @@ def get_archive_filters(
         print(f"Ошибка при получении фильтров: {e}")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 
-@router.get("/", response_model=List[VedPassportSchema])
+@router.get("/")
 def get_ved_passports(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -83,50 +112,114 @@ def get_ved_passports(
     try:
         # Админы видят все активные паспорта, пользователи - только свои
         if current_user.role == "admin":
-            passports = db.query(VedPassport).filter(VedPassport.status == "active").all()
+            passports = db.query(VedPassport).filter(VedPassport.status == "active").limit(10).all()
         else:
             passports = db.query(VedPassport).filter(
                 VedPassport.status == "active",
                 VedPassport.created_by == current_user.id
-            ).all()
+            ).limit(10).all()
 
-        # Создаем объекты для ответа с загруженными связанными данными
-        result_passports = []
+        # Возвращаем простые данные без обработки
+        result = []
         for passport in passports:
-            # Загружаем создателя паспорта
-            creator = db.query(User).filter(User.id == passport.created_by).first()
-            # Загружаем номенклатуру
-            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
+            try:
+                result.append({
+                    "id": passport.id,
+                    "passport_number": passport.passport_number,
+                    "status": passport.status,
+                    "created_by": passport.created_by,
+                    "order_number": passport.order_number,
+                    "nomenclature_id": passport.nomenclature_id,
+                    "created_at": str(passport.created_at) if passport.created_at else None
+                })
+            except Exception as e:
+                print(f"Ошибка обработки паспорта {passport.id}: {e}")
+                continue
 
-            # Создаем объект для ответа
-            passport_data = {
-                "id": passport.id,
-                "passport_number": passport.passport_number,
-                "title": passport.title,
-                "description": passport.description,
-                "status": passport.status,
-                "order_number": passport.order_number,
-                "quantity": passport.quantity,
-                "created_by": passport.created_by,
-                "nomenclature_id": passport.nomenclature_id,
-                "created_at": passport.created_at,
-                "updated_at": passport.updated_at,
-                "creator": {
-                    "id": creator.id,
-                    "username": creator.username,
-                    "email": creator.email,
-                    "full_name": creator.full_name,
-                    "role": creator.role
-                } if creator else None,
-                "nomenclature": nomenclature
-            }
-            result_passports.append(passport_data)
-
-        return result_passports
+        return result
 
     except Exception as e:
         print(f"Ошибка при получении паспортов: {e}")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+@router.get("/test-database")
+def simple_test(db: Session = Depends(get_db)):
+    """Простой тест с доступом к БД"""
+    try:
+        # Получаем количество паспортов
+        count = db.query(VedPassport).count()
+        return {"message": "API работает", "passports_count": count, "data": [1, 2, 3]}
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/passports-list")
+def get_passports_list(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка паспортов ВЭД (альтернативный эндпоинт)"""
+    try:
+        # Админы видят все активные паспорта, пользователи - только свои
+        if current_user.role == "admin":
+            passports = db.query(VedPassport).filter(VedPassport.status == "active").limit(10).all()
+        else:
+            passports = db.query(VedPassport).filter(
+                VedPassport.status == "active",
+                VedPassport.created_by == current_user.id
+            ).limit(10).all()
+
+        # Возвращаем простые данные без обработки
+        result = []
+        for passport in passports:
+            try:
+                result.append({
+                    "id": passport.id,
+                    "passport_number": passport.passport_number,
+                    "status": passport.status,
+                    "created_by": passport.created_by,
+                    "order_number": passport.order_number,
+                    "nomenclature_id": passport.nomenclature_id,
+                    "created_at": str(passport.created_at) if passport.created_at else None
+                })
+            except Exception as e:
+                print(f"Ошибка обработки паспорта {passport.id}: {e}")
+                continue
+
+        return result
+
+    except Exception as e:
+        print(f"Ошибка при получении паспортов: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+@router.get("/debug")
+def test_passports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Простой тест получения паспортов"""
+    try:
+        # Получаем первые 5 паспортов для теста
+        passports = db.query(VedPassport).limit(5).all()
+
+        # Возвращаем простые данные без обработки
+        return [
+            {
+                "id": p.id,
+                "passport_number": p.passport_number,
+                "status": p.status,
+                "created_by": p.created_by,
+                "order_number": p.order_number
+            }
+            for p in passports
+        ]
+
+    except Exception as e:
+        print(f"Ошибка при получении паспортов: {e}")
+        return {"error": str(e)}
 
 @router.get("/archive/", response_model=List[VedPassportSchema])
 def get_user_archive(
@@ -168,11 +261,11 @@ def get_user_archive(
                 "created_at": passport.created_at,
                 "updated_at": passport.updated_at,
                 "creator": {
-                    "id": creator.id,
-                    "username": creator.username,
-                    "email": creator.email,
-                    "full_name": creator.full_name,
-                    "role": creator.role
+                    "id": creator.id if creator else None,
+                    "username": creator.username if creator else None,
+                    "email": creator.email if creator else None,
+                    "full_name": creator.full_name if creator else None,
+                    "role": creator.role if creator else None
                 } if creator else None,
                 "nomenclature": nomenclature
             }
@@ -451,26 +544,3 @@ async def export_passports_pdf(
         print(f"Ошибка при экспорте PDF: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка экспорта PDF: {str(e)}")
 
-@router.get("/{passport_id}", response_model=VedPassportSchema)
-def get_ved_passport(
-    passport_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Получение конкретного паспорта ВЭД по ID"""
-    try:
-        passport = db.query(VedPassport).filter(VedPassport.id == passport_id).first()
-        
-        if not passport:
-            raise HTTPException(status_code=404, detail="Паспорт не найден")
-        
-        if passport.created_by != current_user.id and current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-        
-        return passport
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Ошибка при получении паспорта: {e}")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
