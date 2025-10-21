@@ -346,6 +346,7 @@ export default function MainApp() {
   }
 
   const loadUsers = async () => {
+    console.log('loadUsers вызвана')
     const token = localStorage.getItem('token')
     if (!token) {
       toast.error('Необходимо войти в систему')
@@ -372,6 +373,7 @@ export default function MainApp() {
       }
 
       const usersData = await response.json()
+      console.log('Загружены пользователи:', usersData)
       setUsers(usersData)
     } catch (error: any) {
       console.error('Ошибка при загрузке пользователей:', error)
@@ -387,6 +389,7 @@ export default function MainApp() {
   }
 
   const deleteUser = async (userId: number) => {
+    console.log('deleteUser вызвана с ID:', userId)
     if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
       return
     }
@@ -995,14 +998,22 @@ export default function MainApp() {
                                 <span className="text-gray-400">Текущий пользователь</span>
                               ) : (
                                 <div className="flex space-x-2">
-                                  <button 
-                                    onClick={() => editUser(userItem)}
+                                  <button
+                                    onClick={(e) => {
+                                      console.log('Кнопка Редактировать нажата для пользователя:', userItem)
+                                      e.preventDefault()
+                                      editUser(userItem)
+                                    }}
                                     className="text-blue-600 hover:text-blue-900"
                                   >
                                     Редактировать
                                   </button>
-                                  <button 
-                                    onClick={() => deleteUser(userItem.id)}
+                                  <button
+                                    onClick={(e) => {
+                                      console.log('Кнопка Удалить нажата для пользователя ID:', userItem.id)
+                                      e.preventDefault()
+                                      deleteUser(userItem.id)
+                                    }}
                                     className="text-red-600 hover:text-red-900"
                                   >
                                     Удалить
