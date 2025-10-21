@@ -40,7 +40,7 @@ class VedPassport(Base):
     status = Column(String, default="active")  # active, archived, draft
     order_number = Column(String, nullable=False)
     quantity = Column(Integer, default=1)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     nomenclature_id = Column(Integer, ForeignKey("ved_nomenclature.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -124,7 +124,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, nullable=False, unique=True)
-    email = Column(String, nullable=False, unique=True)
+    email = Column(String, nullable=True, unique=True)
     full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False, default="user")  # user, admin

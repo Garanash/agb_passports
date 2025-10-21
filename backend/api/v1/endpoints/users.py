@@ -115,6 +115,18 @@ async def update_user(
             raise HTTPException(status_code=403, detail="Нет доступа к этому пользователю")
         
         # Обновляем поля
+        if user_data.username is not None:
+            # Проверяем, не существует ли уже пользователь с таким именем
+            from sqlalchemy import select
+            existing_user_query = select(User).where(User.username == user_data.username, User.id != user_id)
+            result = await db.execute(existing_user_query)
+            existing_user = result.scalar_one_or_none()
+            
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Пользователь с таким именем уже существует")
+            
+            user.username = user_data.username
+            
         if user_data.email is not None:
             user.email = user_data.email
         if user_data.full_name is not None:
@@ -123,6 +135,9 @@ async def update_user(
             user.role = user_data.role
         if user_data.is_active is not None and current_user.role == "admin":
             user.is_active = user_data.is_active
+        if user_data.password is not None and user_data.password.strip():
+            from backend.api.auth import get_password_hash
+            user.hashed_password = get_password_hash(user_data.password)
         
         await db.commit()
         await db.refresh(user)

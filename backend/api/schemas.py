@@ -100,17 +100,23 @@ class MultiplePassportCreate(BaseModel):
 class UserBase(BaseModel):
     """Базовая схема пользователя"""
     username: str
-    email: str
+    email: Optional[str] = None
     full_name: Optional[str] = None
     role: str = "user"
     is_active: bool = True
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel):
     """Схема для создания пользователя"""
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    role: str = "user"
+    is_active: bool = True
     password: str
 
 class UserUpdate(BaseModel):
     """Схема для обновления пользователя"""
+    username: Optional[str] = None
     email: Optional[str] = None
     full_name: Optional[str] = None
     role: Optional[str] = None
