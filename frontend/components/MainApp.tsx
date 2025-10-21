@@ -999,9 +999,8 @@ export default function MainApp() {
                               ) : (
                                 <div className="flex space-x-2">
                                   <button
-                                    onClick={(e) => {
+                                    onClick={() => {
                                       console.log('Кнопка Редактировать нажата для пользователя:', userItem)
-                                      e.preventDefault()
                                       editUser(userItem)
                                     }}
                                     className="text-blue-600 hover:text-blue-900"
@@ -1009,9 +1008,8 @@ export default function MainApp() {
                                     Редактировать
                                   </button>
                                   <button
-                                    onClick={(e) => {
+                                    onClick={() => {
                                       console.log('Кнопка Удалить нажата для пользователя ID:', userItem.id)
-                                      e.preventDefault()
                                       deleteUser(userItem.id)
                                     }}
                                     className="text-red-600 hover:text-red-900"
@@ -1054,6 +1052,7 @@ export default function MainApp() {
                 const username = formData.get('username') as string
                 const password = formData.get('password') as string
                 const fullName = formData.get('fullName') as string
+                const email = formData.get('email') as string
                 const role = formData.get('role') as string
 
                 const token = localStorage.getItem('token')
@@ -1073,7 +1072,9 @@ export default function MainApp() {
                       username,
                       password,
                       full_name: fullName,
-                      role: role || 'user'
+                      email: email || null,
+                      role: role || 'user',
+                      is_active: true
                     })
                   })
 
@@ -1134,7 +1135,19 @@ export default function MainApp() {
                       placeholder="Введите полное имя"
                     />
                   </div>
-                  
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите email (необязательно)"
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Роль
@@ -1194,6 +1207,7 @@ export default function MainApp() {
                 const username = formData.get('username') as string
                 const password = formData.get('password') as string
                 const fullName = formData.get('fullName') as string
+                const email = formData.get('email') as string
                 const role = formData.get('role') as string
 
                 const token = localStorage.getItem('token')
@@ -1206,6 +1220,7 @@ export default function MainApp() {
                   const updateData: any = {
                     username,
                     full_name: fullName,
+                    email: email || null,
                     role: role || 'user'
                   }
 
@@ -1282,7 +1297,20 @@ export default function MainApp() {
                       placeholder="Введите полное имя"
                     />
                   </div>
-                  
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      defaultValue={editingUser.email || ''}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите email (необязательно)"
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Роль
