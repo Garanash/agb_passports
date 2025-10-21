@@ -6,10 +6,17 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+from dotenv import dotenv_values
 
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Загружаем переменные окружения из config.env
+config = dotenv_values("config.env")
+for key, value in config.items():
+    if key not in os.environ:
+        os.environ[key] = value
 
 from backend.database import create_tables, create_async_tables
 from backend.api.v1.endpoints.passports import router as passports_router
