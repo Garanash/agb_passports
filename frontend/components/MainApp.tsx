@@ -55,6 +55,7 @@ export default function MainApp() {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
   const [editingUser, setEditingUser] = useState<any>(null)
   const [showEditUserModal, setShowEditUserModal] = useState(false)
+  const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
 
   const {
     register,
@@ -78,6 +79,20 @@ export default function MainApp() {
     item.code_1c.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.article.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  // Фильтрация паспортов по поисковому запросу архива
+  const filteredPassports = passports.filter(passport => {
+    if (!archiveSearchTerm) return true
+
+    const searchLower = archiveSearchTerm.toLowerCase()
+    return (
+      passport.passport_number?.toLowerCase().includes(searchLower) ||
+      passport.order_number?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.name?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.code_1c?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.article?.toLowerCase().includes(searchLower)
+    )
+  })
 
   // Обновление выбранной номенклатуры при изменении ID
   useEffect(() => {
@@ -792,30 +807,61 @@ export default function MainApp() {
                      </div>
 
                      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                       {passports.length === 0 ? (
-                         <div className="text-center py-12">
-                           <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                           <h3 className="text-lg font-medium text-gray-900 mb-2">Архив пуст</h3>
-                           <p className="text-gray-600">Создайте паспорта, чтобы они появились в архиве</p>
-                         </div>
+                      {passports.length === 0 ? (
+                        <div className="text-center py-12">
+                          <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Архив пуст</h3>
+                          <p className="text-gray-600">Создайте паспорта, чтобы они появились в архиве</p>
+                        </div>
+                      ) : filteredPassports.length === 0 ? (
+                        <div className="text-center py-12">
+                          <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Ничего не найдено</h3>
+                          <p className="text-gray-600">Попробуйте изменить поисковый запрос</p>
+                          <button
+                            onClick={() => setArchiveSearchTerm('')}
+                            className="mt-4 inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                          >
+                            Очистить поиск
+                          </button>
+                        </div>
                        ) : (
                          <div className="space-y-4">
                            <div className="flex items-center justify-between">
-                             <h3 className="text-lg font-semibold text-gray-900">
-                               Всего паспортов: {passports.length}
-                             </h3>
+                             <div>
+                               <h3 className="text-lg font-semibold text-gray-900">
+                                 {archiveSearchTerm ? `Найдено паспортов: ${filteredPassports.length}` : `Всего паспортов: ${passports.length}`}
+                               </h3>
+                               {archiveSearchTerm && (
+                                 <p className="text-sm text-gray-600 mt-1">
+                                   Поиск: "{archiveSearchTerm}"
+                                 </p>
+                               )}
+                             </div>
                              <div className="flex space-x-2">
                                <button
                                  onClick={() => {
-                                   const allIds = passports.map(p => p.id)
+                                   const allIds = filteredPassports.map(p => p.id)
                                    exportToPdf(allIds)
                                  }}
                                  className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
                                >
                                  <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
-                                 Экспорт всех в PDF
+                                 {archiveSearchTerm ? 'Экспорт найденных' : 'Экспорт всех в PDF'}
                                </button>
                              </div>
+                           </div>
+
+                           {/* Строка поиска */}
+                           <div className="relative">
+                             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                             <input
+                               type="text"
+                               placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
+                               value={archiveSearchTerm}
+                               onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                               className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                             />
                            </div>
                            
                            <div className="overflow-x-auto">
@@ -843,7 +889,7 @@ export default function MainApp() {
                                  </tr>
                                </thead>
                                <tbody className="bg-white divide-y divide-gray-200">
-                                 {passports.map((passport) => (
+                                 {filteredPassports.map((passport) => (
                                    <tr key={passport.id} className="hover:bg-gray-50">
                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                        {passport.passport_number}
