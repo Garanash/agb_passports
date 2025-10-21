@@ -27,35 +27,6 @@ from backend.database import get_db, get_async_db
 
 router = APIRouter()
 
-@router.get("/{passport_id:path}", response_model=VedPassportSchema)
-def get_ved_passport(
-    passport_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Получение конкретного паспорта ВЭД по ID"""
-    try:
-        # Проверяем, является ли passport_id числом
-        if not passport_id.isdigit():
-            raise HTTPException(status_code=404, detail="Паспорт не найден")
-
-        passport_id_int = int(passport_id)
-        passport = db.query(VedPassport).filter(VedPassport.id == passport_id_int).first()
-
-        if not passport:
-            raise HTTPException(status_code=404, detail="Паспорт не найден")
-
-        if passport.created_by != current_user.id and current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="Доступ запрещен")
-
-        return passport
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Ошибка при получении паспорта: {e}")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
-
 @router.get("/nomenclature/", response_model=List[VEDNomenclatureSchema])
 def get_ved_nomenclature(
     current_user: User = Depends(get_current_user),
@@ -154,7 +125,107 @@ def simple_test(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/passports-list")
+@router.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """Проверка здоровья API"""
+    try:
+        count = db.query(VedPassport).count()
+        return {"status": "healthy", "service": "passports", "version": "1.0.0", "passports_count": count}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+@router.get("/test")
+def test_endpoint():
+    """Тестовый эндпоинт"""
+    return {"message": "Test endpoint works"}
+
+@router.get("/debug-passports")
+def debug_passports(db: Session = Depends(get_db)):
+    """Отладочный эндпоинт для паспортов"""
+    try:
+        passports = db.query(VedPassport).limit(5).all()
+        result = []
+        for passport in passports:
+            result.append({
+                "id": passport.id,
+                "passport_number": passport.passport_number,
+                "status": passport.status,
+                "created_by": passport.created_by,
+                "order_number": passport.order_number,
+                "nomenclature_id": passport.nomenclature_id
+            })
+        return {"passports": result, "count": len(result)}
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/public-passports")
+def public_passports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение всех паспортов для архива"""
+    try:
+        # Админы видят все паспорта, пользователи - только свои
+        if current_user.role == "admin":
+            passports = db.query(VedPassport).order_by(VedPassport.created_at.desc()).all()
+        else:
+            passports = db.query(VedPassport).filter(
+                VedPassport.created_by == current_user.id
+            ).order_by(VedPassport.created_at.desc()).all()
+
+        # Создаем объекты для ответа с загруженными связанными данными
+        result_passports = []
+        for passport in passports:
+            # Загружаем создателя паспорта
+            creator = db.query(User).filter(User.id == passport.created_by).first()
+            # Загружаем номенклатуру
+            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
+
+            # Создаем объект для ответа
+            passport_data = {
+                "id": passport.id,
+                "passport_number": passport.passport_number,
+                "title": passport.title,
+                "description": passport.description,
+                "status": passport.status,
+                "order_number": passport.order_number,
+                "quantity": passport.quantity,
+                "created_by": passport.created_by,
+                "nomenclature_id": passport.nomenclature_id,
+                "created_at": passport.created_at.isoformat() if passport.created_at else None,
+                "updated_at": passport.updated_at.isoformat() if passport.updated_at else None,
+                "creator": {
+                    "id": creator.id if creator else None,
+                    "username": creator.username if creator else None,
+                    "email": creator.email if creator else None,
+                    "full_name": creator.full_name if creator else None,
+                    "role": creator.role if creator else None
+                } if creator else None,
+                "nomenclature": {
+                    "id": nomenclature.id if nomenclature else None,
+                    "code_1c": nomenclature.code_1c if nomenclature else None,
+                    "name": nomenclature.name if nomenclature else None,
+                    "article": nomenclature.article if nomenclature else None,
+                    "matrix": nomenclature.matrix if nomenclature else None,
+                    "drilling_depth": nomenclature.drilling_depth if nomenclature else None,
+                    "height": nomenclature.height if nomenclature else None,
+                    "thread": nomenclature.thread if nomenclature else None,
+                    "product_type": nomenclature.product_type if nomenclature else None,
+                    "is_active": nomenclature.is_active if nomenclature else None,
+                    "created_at": nomenclature.created_at.isoformat() if nomenclature and nomenclature.created_at else None,
+                    "updated_at": nomenclature.updated_at.isoformat() if nomenclature and nomenclature.updated_at else None
+                } if nomenclature else None
+            }
+            result_passports.append(passport_data)
+
+        return result_passports
+    except Exception as e:
+        print(f"Ошибка при получении паспортов: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
+@router.get("/get-all-passports")
 def get_passports_list(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -539,8 +610,89 @@ async def export_passports_pdf(
             media_type="application/pdf",
             headers={"Content-Disposition": "attachment; filename=passports.pdf"}
         )
-        
+
     except Exception as e:
         print(f"Ошибка при экспорте PDF: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка экспорта PDF: {str(e)}")
+
+@router.post("/{passport_id}/archive")
+async def archive_passport(
+    passport_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Архивирование паспорта"""
+    try:
+        passport = await db.get(VedPassport, passport_id)
+        if not passport:
+            raise HTTPException(status_code=404, detail="Паспорт не найден")
+        
+        # Проверяем права доступа
+        if passport.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Нет доступа к этому паспорту")
+        
+        # Изменяем статус на архивированный
+        passport.status = "archived"
+        await db.commit()
+        
+        return {"message": "Паспорт успешно архивирован", "passport_id": passport_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка архивирования паспорта: {str(e)}")
+
+@router.post("/{passport_id}/activate")
+async def activate_passport(
+    passport_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Активация паспорта"""
+    try:
+        passport = await db.get(VedPassport, passport_id)
+        if not passport:
+            raise HTTPException(status_code=404, detail="Паспорт не найден")
+        
+        # Проверяем права доступа
+        if passport.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Нет доступа к этому паспорту")
+        
+        # Изменяем статус на активный
+        passport.status = "active"
+        await db.commit()
+        
+        return {"message": "Паспорт успешно активирован", "passport_id": passport_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка активации паспорта: {str(e)}")
+
+# Временно отключаем роут для получения конкретного паспорта
+# @router.get("/passport/{passport_id}", response_model=VedPassportSchema)
+# def get_ved_passport(
+#     passport_id: int,
+#     current_user: User = Depends(get_current_user),
+#     db: Session = Depends(get_db)
+# ):
+#     """Получение конкретного паспорта ВЭД по ID"""
+#     try:
+#         passport = db.query(VedPassport).filter(VedPassport.id == passport_id).first()
+
+#         if not passport:
+#             raise HTTPException(status_code=404, detail="Паспорт не найден")
+
+#         if passport.created_by != current_user.id and current_user.role != "admin":
+#             raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+#         return passport
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         print(f"Ошибка при получении паспорта: {e}")
+#         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 

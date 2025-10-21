@@ -94,6 +94,15 @@ export function usePassports() {
     }
   }
 
+  const exportBulkPassportPdf = async (passportIds: number[]) => {
+    try {
+      const response = await passportsAPI.exportBulkPdf(passportIds)
+      return response
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Ошибка экспорта паспортов в PDF')
+    }
+  }
+
   return {
     passports,
     isLoading,
@@ -103,6 +112,7 @@ export function usePassports() {
     archivePassport,
     activatePassport,
     exportPassportPdf,
+    exportBulkPassportPdf,
     refetchPassports: fetchPassports,
     refetch: fetchPassports,
   }

@@ -5,6 +5,7 @@ import { usePassports } from '../hooks/usePassports'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/router'
 import * as XLSX from 'xlsx'
+import { passportsAPI } from '../lib/api'
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -278,36 +279,11 @@ export default function MainApp() {
       return
     }
 
-    // Проверяем токен аутентификации
-    const token = localStorage.getItem('token')
-    if (!token) {
-      toast.error('Необходимо войти в систему')
-      router.push('/login')
-      return
-    }
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/export/bulk/pdf`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(idsToExport)
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          toast.error('Сессия истекла. Необходимо войти в систему')
-          localStorage.removeItem('token')
-          router.push('/login')
-          return
-        }
-        throw new Error('Ошибка при экспорте PDF')
-      }
-
+      const response = await passportsAPI.exportBulkPdf(idsToExport)
+      
       // Создаем blob из ответа
-      const blob = await response.blob()
+      const blob = new Blob([response], { type: 'application/pdf' })
       
       // Создаем ссылку для скачивания
       const url = window.URL.createObjectURL(blob)
@@ -327,31 +303,8 @@ export default function MainApp() {
   }
 
   const archivePassport = async (passportId: number) => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      toast.error('Необходимо войти в систему')
-      router.push('/login')
-      return
-    }
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/${passportId}/archive`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          toast.error('Сессия истекла. Необходимо войти в систему')
-          localStorage.removeItem('token')
-          router.push('/login')
-          return
-        }
-        throw new Error('Ошибка при архивировании паспорта')
-      }
-
+      await passportsAPI.archive(passportId)
       toast.success('Паспорт архивирован')
       refetchPassports()
     } catch (error: any) {
