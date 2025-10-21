@@ -1,0 +1,22 @@
+FROM node:18-alpine
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Копируем package.json и package-lock.json
+COPY frontend/package*.json ./
+
+# Устанавливаем зависимости
+RUN npm ci
+
+# Копируем исходный код
+COPY frontend/ ./
+
+# Собираем приложение
+RUN npm run build
+
+# Открываем порт
+EXPOSE 3000
+
+# Команда запуска
+CMD ["npm", "start"]
