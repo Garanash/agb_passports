@@ -345,41 +345,41 @@ export default function MainApp() {
              }
            }
 
-           const loadUsers = async () => {
-             const token = localStorage.getItem('token')
-             if (!token) {
-               toast.error('Необходимо войти в систему')
-               router.push('/login')
-               return
-             }
+  const loadUsers = async () => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      toast.error('Необходимо войти в систему')
+      router.push('/login')
+      return
+    }
 
-             setIsLoadingUsers(true)
-             try {
-               const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
-                 headers: {
-                   'Authorization': `Bearer ${token}`
-                 }
-               })
+    setIsLoadingUsers(true)
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
 
-               if (!response.ok) {
-                 if (response.status === 401) {
-                   toast.error('Сессия истекла. Необходимо войти в систему')
-                   localStorage.removeItem('token')
-                   router.push('/login')
-                   return
-                 }
-                 throw new Error('Ошибка при загрузке пользователей')
-               }
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Сессия истекла. Необходимо войти в систему')
+          localStorage.removeItem('token')
+          router.push('/login')
+          return
+        }
+        throw new Error('Ошибка при загрузке пользователей')
+      }
 
-               const usersData = await response.json()
-               setUsers(usersData)
-             } catch (error: any) {
-               console.error('Ошибка при загрузке пользователей:', error)
-               toast.error(error.message || 'Ошибка при загрузке пользователей')
-             } finally {
-               setIsLoadingUsers(false)
-             }
-           }
+      const usersData = await response.json()
+      setUsers(usersData)
+    } catch (error: any) {
+      console.error('Ошибка при загрузке пользователей:', error)
+      toast.error(error.message || 'Ошибка при загрузке пользователей')
+    } finally {
+      setIsLoadingUsers(false)
+    }
+  }
 
   const editUser = (user: any) => {
     setEditingUser(user)
