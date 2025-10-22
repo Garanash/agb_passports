@@ -103,6 +103,24 @@ export function usePassports() {
     }
   }
 
+  const exportPassportsExcel = async () => {
+    try {
+      const response = await passportsAPI.exportExcel()
+      return response
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Ошибка экспорта паспортов в Excel')
+    }
+  }
+
+  const exportSelectedPassportsExcel = async (passportIds: number[]) => {
+    try {
+      const response = await passportsAPI.exportSelectedExcel(passportIds)
+      return response
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Ошибка экспорта выбранных паспортов в Excel')
+    }
+  }
+
   return {
     passports,
     isLoading,
@@ -113,6 +131,8 @@ export function usePassports() {
     activatePassport,
     exportPassportPdf,
     exportBulkPassportPdf,
+    exportPassportsExcel,
+    exportSelectedPassportsExcel,
     refetchPassports: fetchPassports,
     refetch: fetchPassports,
   }

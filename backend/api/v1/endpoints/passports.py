@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Optional
 import io
+import pandas as pd
 from datetime import datetime
 
 from backend.models import User, VEDNomenclature, VedPassport, PassportCounter
@@ -695,4 +696,187 @@ async def activate_passport(
 #     except Exception as e:
 #         print(f"Ошибка при получении паспорта: {e}")
 #         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+
+@router.get("/export/excel")
+def export_passports_excel(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Экспорт всех паспортов в Excel"""
+    try:
+        # Получаем все паспорта в зависимости от роли пользователя
+        if current_user.role == "admin":
+            passports = db.query(VedPassport).order_by(VedPassport.created_at.desc()).all()
+        else:
+            passports = db.query(VedPassport).filter(
+                VedPassport.created_by == current_user.id
+            ).order_by(VedPassport.created_at.desc()).all()
+        
+        if not passports:
+            raise HTTPException(status_code=404, detail="Паспорта не найдены")
+        
+        # Подготавливаем данные для Excel
+        data = []
+        for passport in passports:
+            # Загружаем связанные данные
+            creator = db.query(User).filter(User.id == passport.created_by).first()
+            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
+            
+            data.append({
+                'ID паспорта': passport.id,
+                'Номер паспорта': passport.passport_number,
+                'Название': passport.title or '',
+                'Описание': passport.description or '',
+                'Статус': passport.status or '',
+                'Номер заказа': passport.order_number or '',
+                'Количество': passport.quantity or 1,
+                'Создатель': creator.full_name if creator and creator.full_name else creator.username if creator else '',
+                'Email создателя': creator.email if creator else '',
+                'Код 1С': nomenclature.code_1c if nomenclature else '',
+                'Артикул': nomenclature.article if nomenclature else '',
+                'Наименование': nomenclature.name if nomenclature else '',
+                'Матрица': nomenclature.matrix if nomenclature else '',
+                'Глубина бурения': nomenclature.drilling_depth if nomenclature else '',
+                'Высота': nomenclature.height if nomenclature else '',
+                'Резьба': nomenclature.thread if nomenclature else '',
+                'Тип продукта': nomenclature.product_type if nomenclature else '',
+                'Дата создания': passport.created_at.strftime('%d.%m.%Y %H:%M') if passport.created_at else '',
+                'Дата обновления': passport.updated_at.strftime('%d.%m.%Y %H:%M') if passport.updated_at else ''
+            })
+        
+        # Создаем DataFrame
+        df = pd.DataFrame(data)
+        
+        # Создаем Excel файл в памяти
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Паспорта ВЭД', index=False)
+            
+            # Получаем рабочую книгу для форматирования
+            workbook = writer.book
+            worksheet = writer.sheets['Паспорта ВЭД']
+            
+            # Автоподбор ширины колонок
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Максимальная ширина 50
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        # Генерируем имя файла с датой
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"ved_passports_export_{timestamp}.xlsx"
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        print(f"Ошибка при экспорте Excel: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта Excel: {str(e)}")
+
+@router.post("/export/excel/selected")
+def export_selected_passports_excel(
+    passport_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Экспорт выбранных паспортов в Excel"""
+    try:
+        if not passport_ids:
+            raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта")
+        
+        # Получаем выбранные паспорта в зависимости от роли пользователя
+        if current_user.role == "admin":
+            passports = db.query(VedPassport).filter(
+                VedPassport.id.in_(passport_ids)
+            ).order_by(VedPassport.created_at.desc()).all()
+        else:
+            passports = db.query(VedPassport).filter(
+                VedPassport.id.in_(passport_ids),
+                VedPassport.created_by == current_user.id
+            ).order_by(VedPassport.created_at.desc()).all()
+        
+        if not passports:
+            raise HTTPException(status_code=404, detail="Выбранные паспорта не найдены")
+        
+        # Подготавливаем данные для Excel
+        data = []
+        for passport in passports:
+            # Загружаем связанные данные
+            creator = db.query(User).filter(User.id == passport.created_by).first()
+            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
+            
+            data.append({
+                'ID паспорта': passport.id,
+                'Номер паспорта': passport.passport_number,
+                'Название': passport.title or '',
+                'Описание': passport.description or '',
+                'Статус': passport.status or '',
+                'Номер заказа': passport.order_number or '',
+                'Количество': passport.quantity or 1,
+                'Создатель': creator.full_name if creator and creator.full_name else creator.username if creator else '',
+                'Email создателя': creator.email if creator else '',
+                'Код 1С': nomenclature.code_1c if nomenclature else '',
+                'Артикул': nomenclature.article if nomenclature else '',
+                'Наименование': nomenclature.name if nomenclature else '',
+                'Матрица': nomenclature.matrix if nomenclature else '',
+                'Глубина бурения': nomenclature.drilling_depth if nomenclature else '',
+                'Высота': nomenclature.height if nomenclature else '',
+                'Резьба': nomenclature.thread if nomenclature else '',
+                'Тип продукта': nomenclature.product_type if nomenclature else '',
+                'Дата создания': passport.created_at.strftime('%d.%m.%Y %H:%M') if passport.created_at else '',
+                'Дата обновления': passport.updated_at.strftime('%d.%m.%Y %H:%M') if passport.updated_at else ''
+            })
+        
+        # Создаем DataFrame
+        df = pd.DataFrame(data)
+        
+        # Создаем Excel файл в памяти
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Выбранные паспорта ВЭД', index=False)
+            
+            # Получаем рабочую книгу для форматирования
+            workbook = writer.book
+            worksheet = writer.sheets['Выбранные паспорта ВЭД']
+            
+            # Автоподбор ширины колонок
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Максимальная ширина 50
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        
+        # Генерируем имя файла с датой
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"ved_passports_selected_{timestamp}.xlsx"
+        
+        return StreamingResponse(
+            io.BytesIO(output.read()),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        print(f"Ошибка при экспорте выбранных паспортов в Excel: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта выбранных паспортов в Excel: {str(e)}")
 

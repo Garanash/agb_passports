@@ -12,14 +12,15 @@ import {
   UserIcon,
   TagIcon,
   CheckCircleIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  TableCellsIcon
 } from '@heroicons/react/24/outline'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
 export default function PassportsPage() {
   const [searchTerm, setSearchTerm] = useState('')
-  const { passports, isLoading, error, refetchPassports, archivePassport, exportPassportPdf } = usePassports()
+  const { passports, isLoading, error, refetchPassports, archivePassport, exportPassportPdf, exportPassportsExcel } = usePassports()
   const { user, isAdmin } = useAuth()
 
   // Фильтрация паспортов по роли пользователя
@@ -50,6 +51,23 @@ export default function PassportsPage() {
       await exportPassportPdf(id)
     } catch (error: any) {
       toast.error('Ошибка экспорта паспорта')
+    }
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await exportPassportsExcel()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ved_passports_export_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success('Паспорта успешно экспортированы в Excel')
+    } catch (error: any) {
+      toast.error('Ошибка экспорта паспортов в Excel')
     }
   }
 
@@ -94,10 +112,20 @@ export default function PassportsPage() {
             Управление активными паспортами ВЭД
           </p>
         </div>
-        <Link href="/passports/create" className="btn btn-primary">
-          <PlusIcon className="h-5 w-5 mr-2" />
-          Создать паспорт
-        </Link>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleExportExcel}
+            className="btn btn-secondary"
+            disabled={passports.length === 0}
+          >
+            <TableCellsIcon className="h-5 w-5 mr-2" />
+            Экспорт в Excel
+          </button>
+          <Link href="/passports/create" className="btn btn-primary">
+            <PlusIcon className="h-5 w-5 mr-2" />
+            Создать паспорт
+          </Link>
+        </div>
       </div>
 
       {/* Статистика */}

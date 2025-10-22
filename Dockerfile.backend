@@ -24,7 +24,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY load_nomenclature.py .
 COPY run_backend.py .
-COPY config.env .
 
 # Создаем директорию для логов
 RUN mkdir -p /app/logs

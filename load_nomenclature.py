@@ -33,21 +33,38 @@ def load_nomenclature_from_excel(excel_file_path: str):
         print("✅ Таблицы созданы")
         
         # Очищаем существующие номенклатуры
-        db.query(VEDNomenclature).delete()
+        try:
+            db.query(VEDNomenclature).delete()
+            db.commit()
+            print("✅ Существующие номенклатуры удалены")
+        except Exception as e:
+            print(f"⚠️ Ошибка при удалении номенклатур: {e}")
+            db.rollback()
         
         # Загружаем новые номенклатуры
         loaded_count = 0
+        print(f"🔍 Начинаем обработку {len(df)} строк...")
         
-        for index, row in df.iterrows():
+        for index in range(len(df)):
             try:
-                # Пропускаем пустые строки
-                if pd.isna(row.get('Код 1С')) or pd.isna(row.get('Наименование')):
+                # Получаем данные из колонок (используем индексы, так как названия колонок неправильные)
+                columns = list(df.columns)
+                if len(columns) < 3:
+                    print(f"❌ Недостаточно колонок в строке {index+1}")
                     continue
                 
-                # Извлекаем информацию из названия
-                name = str(row.get('Наименование', ''))
-                code_1c = str(row.get('Код 1С', ''))
-                article = str(row.get('Артикул', ''))
+                # Извлекаем данные по позициям колонок
+                # Новая структура: [Артикул, Наименование, Код]
+                article = str(df.iloc[index, 0]) if not pd.isna(df.iloc[index, 0]) else ''
+                name = str(df.iloc[index, 1]) if not pd.isna(df.iloc[index, 1]) else ''
+                code_1c = str(df.iloc[index, 2]) if not pd.isna(df.iloc[index, 2]) else ''
+                
+                # Пропускаем пустые строки
+                if not article or not code_1c or not name:
+                    print(f"❌ Пустая строка {index+1}: article='{article}', code_1c='{code_1c}', name='{name}'")
+                    continue
+                
+                print(f"📝 Обрабатываем строку {index+1}: {article} | {code_1c} | {name}")
                 
                 # Парсим информацию из названия коронки
                 matrix = 'NQ'  # По умолчанию
@@ -63,6 +80,12 @@ def load_nomenclature_from_excel(excel_file_path: str):
                     matrix = 'PQ'
                 elif 'BQ' in name:
                     matrix = 'BQ'
+                elif 'HWT' in name:
+                    matrix = 'HWT'
+                elif 'PWT' in name:
+                    matrix = 'PWT'
+                elif 'HQ3' in name:
+                    matrix = 'HQ3'
                 
                 # Извлекаем глубину бурения
                 import re
@@ -75,16 +98,31 @@ def load_nomenclature_from_excel(excel_file_path: str):
                 if height_match:
                     height = height_match.group(1)
                 
-                # Создаем номенклатуру
+                # Определяем тип продукта
+                product_type = 'коронка'  # По умолчанию
+                if 'коронка' in name.lower():
+                    product_type = 'коронка'
+                elif 'расширитель' in name.lower():
+                    product_type = 'расширитель'
+                elif 'башмак' in name.lower():
+                    product_type = 'башмак'
+                
+                # Определяем резьбу
+                thread = matrix  # По умолчанию резьба = матрица
+                thread_match = re.search(r'резьба (\w+)', name)
+                if thread_match:
+                    thread = thread_match.group(1)
+                
+                # Создаем номенклатуру (меняем местами article и code_1c)
                 nomenclature = VEDNomenclature(
-                    code_1c=code_1c,
+                    code_1c=article,  # Код 1С теперь в поле code_1c
                     name=name,
                     drilling_depth=drilling_depth,
                     matrix=matrix,
-                    article=article,
+                    article=code_1c,  # Артикул теперь в поле article
                     height=height,
-                    thread='',
-                    product_type='коронка',
+                    thread=thread,
+                    product_type=product_type,
                     is_active=True
                 )
                 

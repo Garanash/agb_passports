@@ -13,7 +13,7 @@ from passlib.context import CryptContext
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.models import User, Base
-from backend.database import get_db_url
+from backend.database import DATABASE_URL
 
 # Контекст для хеширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -26,7 +26,7 @@ def create_admin_user():
     """Создание суперпользователя админа"""
 
     # Получаем URL базы данных
-    database_url = get_db_url()
+    database_url = DATABASE_URL
 
     # Создаем движок базы данных
     engine = create_engine(database_url)
@@ -55,7 +55,8 @@ def create_admin_user():
         admin_full_name = "Супер Администратор"
 
         # Временно используем простой хеш для избежания проблем с bcrypt
-        hashed_password = f"bcrypt${admin_password}"
+        import hashlib
+        hashed_password = f"sha256${hashlib.sha256(admin_password.encode()).hexdigest()}"
 
         admin = User(
             username=admin_username,

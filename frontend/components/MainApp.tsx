@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNomenclature } from '../hooks/useNomenclature'
 import { usePassports } from '../hooks/usePassports'
@@ -17,7 +17,8 @@ import {
   UserGroupIcon,
   Cog6ToothIcon,
   ArrowDownTrayIcon,
-  DocumentArrowDownIcon
+  DocumentArrowDownIcon,
+  TableCellsIcon
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 
@@ -41,7 +42,7 @@ interface OrderData {
 
 export default function MainApp() {
   const { nomenclature, isLoading: nomenclatureLoading } = useNomenclature()
-  const { passports, refetchPassports } = usePassports()
+  const { passports, refetchPassports, exportSelectedPassportsExcel } = usePassports()
   const { user, logout } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('create')
@@ -57,6 +58,8 @@ export default function MainApp() {
   const [editingUser, setEditingUser] = useState<any>(null)
   const [showEditUserModal, setShowEditUserModal] = useState(false)
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
+  const [selectedPassportIds, setSelectedPassportIds] = useState<number[]>([])
+  const [showArchived, setShowArchived] = useState(false)
 
   const {
     register,
@@ -81,8 +84,17 @@ export default function MainApp() {
     item.article.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Фильтрация паспортов по поисковому запросу архива
+  // Фильтрация паспортов по поисковому запросу архива и статусу
   const filteredPassports = passports.filter(passport => {
+    // Фильтр по статусу
+    if (!showArchived && passport.status === 'archived') {
+      return false
+    }
+    if (showArchived && passport.status === 'active') {
+      return false
+    }
+
+    // Фильтр по поисковому запросу
     if (!archiveSearchTerm) return true
 
     const searchLower = archiveSearchTerm.toLowerCase()
@@ -110,6 +122,11 @@ export default function MainApp() {
       loadUsers()
     }
   }, [activeTab, user?.role])
+
+  // Очищаем выбор при изменении поискового запроса или фильтра архива
+  useEffect(() => {
+    setSelectedPassportIds([])
+  }, [archiveSearchTerm, showArchived])
 
   const addToSelection = () => {
     if (!orderNumber || orderNumber.length < 6) {
@@ -299,6 +316,75 @@ export default function MainApp() {
     } catch (error: any) {
       console.error('Ошибка при экспорте PDF:', error)
       toast.error(error.message || 'Ошибка при экспорте PDF')
+    }
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await passportsAPI.exportExcel()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ved_passports_export_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success('Паспорта успешно экспортированы в Excel')
+    } catch (error: any) {
+      console.error('Ошибка при экспорте Excel:', error)
+      toast.error('Ошибка экспорта паспортов в Excel')
+    }
+  }
+
+  // Функции для работы с выбором паспортов
+  const togglePassportSelection = (passportId: number) => {
+    console.log('togglePassportSelection called with passportId:', passportId)
+    setSelectedPassportIds(prev => {
+      const newSelection = prev.includes(passportId) 
+        ? prev.filter(id => id !== passportId)
+        : [...prev, passportId]
+      console.log('New selection:', newSelection)
+      return newSelection
+    })
+  }
+
+  const selectAllPassports = () => {
+    console.log('selectAllPassports called, filteredPassports:', filteredPassports.length)
+    setSelectedPassportIds(filteredPassports.map(p => p.id))
+  }
+
+  const deselectAllPassports = () => {
+    setSelectedPassportIds([])
+  }
+
+  const exportSelectedToPdf = async () => {
+    if (selectedPassportIds.length === 0) {
+      toast.error('Выберите паспорта для экспорта')
+      return
+    }
+    await exportToPdf(selectedPassportIds)
+  }
+
+  const exportSelectedToExcel = async () => {
+    if (selectedPassportIds.length === 0) {
+      toast.error('Выберите паспорта для экспорта')
+      return
+    }
+    try {
+      const blob = await exportSelectedPassportsExcel(selectedPassportIds)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ved_passports_selected_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success(`Экспортировано ${selectedPassportIds.length} паспортов в Excel`)
+    } catch (error: any) {
+      console.error('Ошибка при экспорте Excel:', error)
+      toast.error('Ошибка экспорта паспортов в Excel')
     }
   }
 
@@ -804,36 +890,105 @@ export default function MainApp() {
                                  </p>
                                )}
                              </div>
-                             <div className="flex space-x-2">
-                               <button
-                                 onClick={() => {
-                                   const allIds = filteredPassports.map(p => p.id)
-                                   exportToPdf(allIds)
-                                 }}
-                                 className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
-                               >
-                                 <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
-                                 {archiveSearchTerm ? 'Экспорт найденных' : 'Экспорт всех в PDF'}
-                               </button>
+                             <div className="flex flex-wrap gap-2">
+                               {/* Кнопки выбора */}
+                               <div className="flex space-x-2">
+                                 <button
+                                   onClick={selectAllPassports}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200"
+                                 >
+                                   Выбрать все
+                                 </button>
+                                 <button
+                                   onClick={deselectAllPassports}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                                 >
+                                   Снять выбор
+                                 </button>
+                               </div>
+                               
+                               {/* Кнопки экспорта выбранных */}
+                               <div className="flex space-x-2">
+                                 <button
+                                   onClick={exportSelectedToPdf}
+                                   disabled={selectedPassportIds.length === 0}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                   <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                                   Экспорт выбранных в PDF ({selectedPassportIds.length})
+                                 </button>
+                                 <button
+                                   onClick={exportSelectedToExcel}
+                                   disabled={selectedPassportIds.length === 0}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                   <TableCellsIcon className="h-4 w-4 mr-2" />
+                                   Экспорт выбранных в Excel ({selectedPassportIds.length})
+                                 </button>
+                               </div>
+                               
+                               {/* Кнопки экспорта всех */}
+                               <div className="flex space-x-2">
+                                 <button
+                                   onClick={() => {
+                                     const allIds = filteredPassports.map(p => p.id)
+                                     exportToPdf(allIds)
+                                   }}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                                 >
+                                   <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
+                                   Экспорт всех в PDF
+                                 </button>
+                                 <button
+                                   onClick={handleExportExcel}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-md hover:bg-green-700"
+                                 >
+                                   <TableCellsIcon className="h-4 w-4 mr-2" />
+                                   Экспорт всех в Excel
+                                 </button>
+                               </div>
                              </div>
                            </div>
 
-                           {/* Строка поиска */}
-                           <div className="relative">
-                             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                             <input
-                               type="text"
-                               placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
-                               value={archiveSearchTerm}
-                               onChange={(e) => setArchiveSearchTerm(e.target.value)}
-                               className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                             />
+                           {/* Строка поиска и фильтры */}
+                           <div className="space-y-4">
+                             <div className="relative">
+                               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                               <input
+                                 type="text"
+                                 placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
+                                 value={archiveSearchTerm}
+                                 onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                                 className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               />
+                             </div>
+                             
+                             {/* Фильтры */}
+                             <div className="flex items-center space-x-4">
+                               <label className="flex items-center">
+                                 <input
+                                   type="checkbox"
+                                   checked={showArchived}
+                                   onChange={(e) => setShowArchived(e.target.checked)}
+                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                 />
+                                 <span className="ml-2 text-sm text-gray-700">Показывать архивные</span>
+                               </label>
+                             </div>
                            </div>
                            
                            <div className="overflow-x-auto">
                              <table className="min-w-full divide-y divide-gray-200">
                                <thead className="bg-gray-50">
                                  <tr>
+                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                                     <input
+                                       type="checkbox"
+                                       checked={selectedPassportIds.length === filteredPassports.length && filteredPassports.length > 0}
+                                       onChange={(e) => e.target.checked ? selectAllPassports() : deselectAllPassports()}
+                                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                     />
+                                   </th>
                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                      Номер паспорта
                                    </th>
@@ -857,6 +1012,14 @@ export default function MainApp() {
                                <tbody className="bg-white divide-y divide-gray-200">
                                  {filteredPassports.map((passport) => (
                                    <tr key={passport.id} className="hover:bg-gray-50">
+                                     <td className="px-6 py-4 whitespace-nowrap w-12">
+                                       <input
+                                         type="checkbox"
+                                         checked={selectedPassportIds.includes(passport.id)}
+                                         onChange={() => togglePassportSelection(passport.id)}
+                                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                       />
+                                     </td>
                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                        {passport.passport_number}
                                      </td>
