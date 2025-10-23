@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: agb_postgres_prod
+    environment:
+      POSTGRES_DB: agb_passports
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agb_passports_2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backup_clean_state_20251022_213032.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - agb_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agb_backend_prod
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-agb_passports_2024}@postgres:5432/agb_passports
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
+      DEBUG: "False"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - agb_network
+    volumes:
+      - ./logs:/app/logs
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.production
+    container_name: agb_frontend_prod
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - agb_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: agb_nginx_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - agb_network
+
+volumes:
+  postgres_data:
+
+networks:
+  agb_network:
+    driver: bridge
