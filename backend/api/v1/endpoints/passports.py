@@ -174,6 +174,8 @@ def public_passports(
                 VedPassport.created_by == current_user.id
             ).order_by(VedPassport.created_at.desc()).all()
 
+        print(f"[public-passports] Получено {len(passports)} паспортов для пользователя {current_user.id} (роль: {current_user.role})")
+
         # Создаем объекты для ответа с загруженными связанными данными
         result_passports = []
         for passport in passports:
