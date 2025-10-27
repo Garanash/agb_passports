@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 import os
 
 # Настройки базы данных PostgreSQL
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/agb_passports")
-ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/agb_passports")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres@127.0.0.1:5432/agb_passports")
+ASYNC_DATABASE_URL = os.getenv("ASYNC_DATABASE_URL", "postgresql+asyncpg://postgres@127.0.0.1:5432/agb_passports")
 
 # Синхронная база данных
 engine = create_engine(DATABASE_URL)
