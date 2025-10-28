@@ -5,7 +5,8 @@ import { usePassports } from '../hooks/usePassports'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/router'
 import * as XLSX from 'xlsx'
-import { passportsAPI } from '../lib/api'
+import { passportsAPI, nomenclatureAPI } from '../lib/api'
+import AddNomenclatureTab from './AddNomenclatureTab'
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -560,17 +561,30 @@ export default function MainApp() {
                 Архив паспортов
               </button>
               {user?.role === 'admin' && (
-                <button
-                  onClick={() => setActiveTab('users')}
-                  className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-                    activeTab === 'users'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <UserGroupIcon className="h-5 w-5 mr-3" />
-                  Пользователи
-                </button>
+                <>
+                  <button
+                    onClick={() => setActiveTab('users')}
+                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                      activeTab === 'users'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <UserGroupIcon className="h-5 w-5 mr-3" />
+                    Пользователи
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('add_nomenclature')}
+                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                      activeTab === 'add_nomenclature'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <PlusIcon className="h-5 w-5 mr-3" />
+                    Добавить номенклатуру
+                  </button>
+                </>
               )}
             </div>
           </nav>
@@ -1526,6 +1540,11 @@ export default function MainApp() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Вкладка добавления номенклатуры */}
+      {activeTab === 'add_nomenclature' && user?.role === 'admin' && (
+        <AddNomenclatureTab user={user} />
       )}
     </div>
   )
