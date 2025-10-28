@@ -86,13 +86,14 @@ export default function MainApp() {
 
   // Фильтрация паспортов по поисковому запросу архива и статусу
   const filteredPassports = passports.filter(passport => {
-    // Фильтр по статусу
-    if (!showArchived && passport.status === 'archived') {
+    // В архиве показываем ВСЕ паспорта по умолчанию
+    // Если включен фильтр "показывать архивные", показываем только архивные
+    if (showArchived && passport.status !== 'archived') {
       return false
     }
-    if (showArchived && passport.status === 'active') {
-      return false
-    }
+    // Если фильтр НЕ включен, показываем активные (по умолчанию)
+    // Но в архиве всегда показываем активные для удобства просмотра
+    // Убираем фильтрацию по статусу для корректной работы архива
 
     // Фильтр по поисковому запросу
     if (!archiveSearchTerm) return true
