@@ -860,25 +860,27 @@ export default function MainApp() {
                      </div>
 
                      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      {passports.length === 0 ? (
-                        <div className="text-center py-12">
-                          <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">Архив пуст</h3>
-                          <p className="text-gray-600">Создайте паспорта, чтобы они появились в архиве</p>
-                        </div>
-                      ) : filteredPassports.length === 0 ? (
-                        <div className="text-center py-12">
-                          <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">Ничего не найдено</h3>
-                          <p className="text-gray-600">Попробуйте изменить поисковый запрос</p>
-                          <button
-                            onClick={() => setArchiveSearchTerm('')}
-                            className="mt-4 inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
-                          >
-                            Очистить поиск
-                          </button>
-                        </div>
-                       ) : (
+                      {filteredPassports.length === 0 ? (
+                        archiveSearchTerm ? (
+                          <div className="text-center py-12">
+                            <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">Ничего не найдено</h3>
+                            <p className="text-gray-600">Попробуйте изменить поисковый запрос</p>
+                            <button
+                              onClick={() => setArchiveSearchTerm('')}
+                              className="mt-4 inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                            >
+                              Очистить поиск
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-center py-12">
+                            <ArchiveBoxIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">Архив пуст</h3>
+                            <p className="text-gray-600">Создайте паспорта, чтобы они появились в архиве</p>
+                          </div>
+                        )
+                      ) : (
                          <div className="space-y-4">
                            <div className="flex items-center justify-between">
                              <div>
