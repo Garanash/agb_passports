@@ -95,6 +95,21 @@ export const nomenclatureAPI = {
     const response = await api.get(`/api/v1/nomenclature/${id}`)
     return response.data
   },
+
+  create: async (data: any) => {
+    const response = await api.post('/api/v1/nomenclature/', data)
+    return response.data
+  },
+
+  update: async (id: number, data: any) => {
+    const response = await api.put(`/api/v1/nomenclature/${id}`, data)
+    return response.data
+  },
+
+  delete: async (id: number) => {
+    const response = await api.delete(`/api/v1/nomenclature/${id}`)
+    return response.data
+  },
 }
 
 // API методы для паспортов

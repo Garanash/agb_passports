@@ -5,7 +5,7 @@ import { usePassports } from '../hooks/usePassports'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/router'
 import * as XLSX from 'xlsx'
-import { passportsAPI } from '../lib/api'
+import { passportsAPI, nomenclatureAPI } from '../lib/api'
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -60,6 +60,18 @@ export default function MainApp() {
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
   const [selectedPassportIds, setSelectedPassportIds] = useState<number[]>([])
   const [showArchived, setShowArchived] = useState(false)
+  const [showCreateNomenclatureModal, setShowCreateNomenclatureModal] = useState(false)
+  const [newNomenclature, setNewNomenclature] = useState({
+    code_1c: '',
+    name: '',
+    article: '',
+    matrix: '',
+    drilling_depth: '',
+    height: '',
+    thread: '',
+    product_type: '',
+    is_active: true
+  })
 
   const {
     register,
@@ -397,6 +409,30 @@ export default function MainApp() {
     } catch (error: any) {
       console.error('Ошибка при архивировании паспорта:', error)
       toast.error(error.message || 'Ошибка при архивировании паспорта')
+    }
+  }
+
+  const handleCreateNomenclature = async () => {
+    try {
+      const result = await nomenclatureAPI.create(newNomenclature)
+      toast.success('Номенклатура добавлена')
+      setShowCreateNomenclatureModal(false)
+      setNewNomenclature({
+        code_1c: '',
+        name: '',
+        article: '',
+        matrix: '',
+        drilling_depth: '',
+        height: '',
+        thread: '',
+        product_type: '',
+        is_active: true
+      })
+      // Обновляем список номенклатуры
+      window.location.reload()
+    } catch (error: any) {
+      console.error('Ошибка при создании номенклатуры:', error)
+      toast.error(error.response?.data?.detail || 'Ошибка при создании номенклатуры')
     }
   }
 
@@ -1088,8 +1124,8 @@ export default function MainApp() {
                                )}
                              </button>
                            </div>
-                         )
-                       ) : null}
+                         )}
+                      ) : null}
                      </div>
                    </div>
                  )}

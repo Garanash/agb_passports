@@ -24,6 +24,30 @@ class VEDNomenclatureSchema(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
+class VEDNomenclatureCreate(BaseModel):
+    """Схема для создания номенклатуры"""
+    code_1c: str = Field(description="Код 1С")
+    name: str = Field(description="Наименование")
+    article: Optional[str] = None
+    matrix: Optional[str] = None
+    drilling_depth: Optional[str] = None
+    height: Optional[str] = None
+    thread: Optional[str] = None
+    product_type: str = Field(description="Тип продукта")
+    is_active: bool = True
+
+class VEDNomenclatureUpdate(BaseModel):
+    """Схема для обновления номенклатуры"""
+    code_1c: Optional[str] = None
+    name: Optional[str] = None
+    article: Optional[str] = None
+    matrix: Optional[str] = None
+    drilling_depth: Optional[str] = None
+    height: Optional[str] = None
+    thread: Optional[str] = None
+    product_type: Optional[str] = None
+    is_active: Optional[bool] = None
+
 class VedPassportSchema(BaseModel):
     """Схема ВЭД паспорта"""
     model_config = ConfigDict(from_attributes=True)
