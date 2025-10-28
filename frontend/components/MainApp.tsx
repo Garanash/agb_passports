@@ -5,7 +5,7 @@ import { usePassports } from '../hooks/usePassports'
 import { useAuth } from '../contexts/AuthContext'
 import { useRouter } from 'next/router'
 import * as XLSX from 'xlsx'
-import { passportsAPI, nomenclatureAPI } from '../lib/api'
+import { passportsAPI } from '../lib/api'
 import { 
   DocumentTextIcon, 
   PlusIcon, 
@@ -42,7 +42,7 @@ interface OrderData {
 
 export default function MainApp() {
   const { nomenclature, isLoading: nomenclatureLoading } = useNomenclature()
-  const { passports, refetchPassports, exportSelectedPassportsExcel, loadMore, totalPages, totalCount, isLoadingMore } = usePassports()
+  const { passports, refetchPassports, exportSelectedPassportsExcel } = usePassports()
   const { user, logout } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('create')
@@ -60,18 +60,6 @@ export default function MainApp() {
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
   const [selectedPassportIds, setSelectedPassportIds] = useState<number[]>([])
   const [showArchived, setShowArchived] = useState(false)
-  const [showCreateNomenclatureModal, setShowCreateNomenclatureModal] = useState(false)
-  const [newNomenclature, setNewNomenclature] = useState({
-    code_1c: '',
-    name: '',
-    article: '',
-    matrix: '',
-    drilling_depth: '',
-    height: '',
-    thread: '',
-    product_type: '',
-    is_active: true
-  })
 
   const {
     register,
@@ -412,30 +400,6 @@ export default function MainApp() {
     }
   }
 
-  const handleCreateNomenclature = async () => {
-    try {
-      const result = await nomenclatureAPI.create(newNomenclature)
-      toast.success('Номенклатура добавлена')
-      setShowCreateNomenclatureModal(false)
-      setNewNomenclature({
-        code_1c: '',
-        name: '',
-        article: '',
-        matrix: '',
-        drilling_depth: '',
-        height: '',
-        thread: '',
-        product_type: '',
-        is_active: true
-      })
-      // Обновляем список номенклатуры
-      window.location.reload()
-    } catch (error: any) {
-      console.error('Ошибка при создании номенклатуры:', error)
-      toast.error(error.response?.data?.detail || 'Ошибка при создании номенклатуры')
-    }
-  }
-
   const loadUsers = async () => {
     console.log('loadUsers вызвана')
     const token = localStorage.getItem('token')
@@ -596,30 +560,17 @@ export default function MainApp() {
                 Архив паспортов
               </button>
               {user?.role === 'admin' && (
-                <>
-                  <button
-                    onClick={() => setActiveTab('users')}
-                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      activeTab === 'users'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`}
-                  >
-                    <UserGroupIcon className="h-5 w-5 mr-3" />
-                    Пользователи
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('add_nomenclature')}
-                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
-                      activeTab === 'add_nomenclature'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                    }`}
-                  >
-                    <PlusIcon className="h-5 w-5 mr-3" />
-                    Добавить номенклатуру
-                  </button>
-                </>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                    activeTab === 'users'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  <UserGroupIcon className="h-5 w-5 mr-3" />
+                  Пользователи
+                </button>
               )}
             </div>
           </nav>
@@ -1115,30 +1066,7 @@ export default function MainApp() {
                              </table>
                            </div>
                          </div>
-                         
-                         {/* Кнопка загрузки больше паспортов */}
-                         {totalPages > 1 && (
-                           <div className="mt-4 text-center">
-                             <button
-                               onClick={loadMore}
-                               disabled={isLoadingMore}
-                               className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                             >
-                               {isLoadingMore ? (
-                                 <>
-                                   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                   </svg>
-                                   Загрузка...
-                                 </>
-                               ) : (
-                                 `Загрузить ещё (показано ${passports.length} из ${totalCount})`
-                               )}
-                             </button>
-                           </div>
-                         )}
-                       </div>
+                       )}
                      </div>
                    </div>
                  )}
@@ -1596,151 +1524,6 @@ export default function MainApp() {
                 </div>
               </form>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Вкладка добавления номенклатуры */}
-      {activeTab === 'add_nomenclature' && user?.role === 'admin' && (
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">Добавить номенклатуру</h1>
-            <p className="text-gray-600 mt-1">Создайте новую номенклатуру для паспортов</p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <form onSubmit={(e) => { e.preventDefault(); handleCreateNomenclature(); }}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Код 1С *
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.code_1c}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, code_1c: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите код 1С"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Наименование *
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.name}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, name: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите наименование"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Артикул
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.article}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, article: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите артикул"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Матрица
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.matrix}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, matrix: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите матрицу"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Глубина бурения
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.drilling_depth}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, drilling_depth: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите глубину бурения"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Высота
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.height}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, height: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите высоту"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Резьба
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.thread}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, thread: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите резьбу"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Тип продукта *
-                  </label>
-                  <input
-                    type="text"
-                    value={newNomenclature.product_type}
-                    onChange={(e) => setNewNomenclature({...newNomenclature, product_type: e.target.value})}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Введите тип продукта"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={newNomenclature.is_active}
-                      onChange={(e) => setNewNomenclature({...newNomenclature, is_active: e.target.checked})}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                    />
-                    <span className="ml-2 text-sm text-gray-700">Активна</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  type="submit"
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
-                >
-                  <PlusIcon className="h-5 w-5 mr-2" />
-                  Добавить номенклатуру
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
