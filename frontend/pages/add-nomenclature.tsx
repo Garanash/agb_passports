@@ -1,13 +1,15 @@
 import React, { useState } from 'react'
-import { PlusIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, ArrowLeftIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline'
 import { nomenclatureAPI } from '../lib/api'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
 import ProtectedRoute from '../components/ProtectedRoute'
-import Layout from '../components/Layout'
+import { useRouter } from 'next/router'
+import * as XLSX from 'xlsx'
 
 function AddNomenclaturePage() {
   const { user } = useAuth()
+  const router = useRouter()
   const [newNomenclature, setNewNomenclature] = useState({
     code_1c: '',
     name: '',
@@ -19,6 +21,55 @@ function AddNomenclaturePage() {
     product_type: '',
     is_active: true
   })
+  const [isUploading, setIsUploading] = useState(false)
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploading(true)
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data, { type: 'array' })
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet) as any[]
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const row of jsonData) {
+        try {
+          const nomenclature = {
+            code_1c: String(row['Код 1С'] || row['code_1c'] || ''),
+            name: String(row['Наименование'] || row['name'] || ''),
+            article: String(row['Артикул'] || row['article'] || ''),
+            matrix: String(row['Матрица'] || row['matrix'] || ''),
+            drilling_depth: String(row['Глубина бурения'] || row['drilling_depth'] || ''),
+            height: String(row['Высота'] || row['height'] || ''),
+            thread: String(row['Резьба'] || row['thread'] || ''),
+            product_type: String(row['Тип продукта'] || row['product_type'] || 'Коронка'),
+            is_active: true
+          }
+
+          if (nomenclature.code_1c && nomenclature.name) {
+            await nomenclatureAPI.create(nomenclature)
+            successCount++
+          }
+        } catch (error: any) {
+          console.error('Ошибка при создании номенклатуры:', error)
+          errorCount++
+        }
+      }
+
+      toast.success(`Загружено успешно: ${successCount}, ошибок: ${errorCount}`)
+      event.target.value = '' // Сбрасываем input
+    } catch (error) {
+      console.error('Ошибка при обработке файла:', error)
+      toast.error('Ошибка при обработке файла')
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   const handleCreateNomenclature = async () => {
     try {
@@ -42,12 +93,57 @@ function AddNomenclaturePage() {
   }
 
   return (
-    <Layout>
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Добавить номенклатуру</h1>
-          <p className="text-gray-600 mt-1">Создайте новую номенклатуру для паспортов</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Верхняя панель */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => router.push('/')}
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors duration-200"
+              >
+                <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                Назад
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900">Добавить номенклатуру</h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">
+                {user?.full_name || user?.username}
+              </span>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Основной контент */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-6">
+            <p className="text-gray-600 mt-1">Создайте новую номенклатуру для паспортов или загрузите из Excel</p>
+          </div>
+
+          {/* Кнопка загрузки файла */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Загрузить из Excel</h2>
+                <p className="text-sm text-gray-600">Загрузите файл Excel с номенклатурой</p>
+              </div>
+              <label className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 cursor-pointer">
+                <DocumentArrowUpIcon className="h-5 w-5 mr-2" />
+                {isUploading ? 'Загрузка...' : 'Загрузить файл'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileUpload}
+                  disabled={isUploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <form onSubmit={(e) => { e.preventDefault(); handleCreateNomenclature(); }}>
@@ -168,7 +264,8 @@ function AddNomenclaturePage() {
           </form>
         </div>
       </div>
-    </Layout>
+      </main>
+    </div>
   )
 }
 
