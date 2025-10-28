@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Скрипт для исправления матрицы и глубины бурения в номенклатуре PQ3"""
+import os
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres@127.0.0.1:5432/agb_passports")
+engine = create_engine(DATABASE_URL)
+Session = sessionmaker(bind=engine)
+
+def fix_pq3_nomenclature():
+    """Исправляет матрицу и глубину бурения для номенклатуры PQ3"""
+    session = Session()
+    
+    try:
+        update_query = text("""
+            UPDATE ved_nomenclature 
+            SET matrix = 'PQ3',
+                drilling_depth = CASE 
+                    WHEN name LIKE '%03-05%' THEN '03-05'
+                    WHEN name LIKE '%05-07%' THEN '05-07'
+                    WHEN name LIKE '%07-09%' THEN '07-09'
+                    WHEN name LIKE '%09-12%' THEN '09-12'
+                    WHEN name LIKE '%11-13%' THEN '11-13'
+                    ELSE drilling_depth
+                END
+            WHERE name LIKE '%PQ3%'
+              AND (matrix IS NULL OR matrix = '');
+        """)
+        
+        result = session.execute(update_query)
+        session.commit()
+        
+        print(f"Обновлено записей: {result.rowcount}")
+        
+        select_query = text("""
+            SELECT id, code_1c, name, matrix, drilling_depth 
+            FROM ved_nomenclature 
+            WHERE name LIKE '%PQ3%'
+            ORDER BY id
+            LIMIT 10;
+        """)
+        
+        rows = session.execute(select_query)
+        print("\nОбновленные записи:")
+        for row in rows:
+            print(f"ID: {row[0]}, Code: {row[1]}, Name: {row[2]}, Matrix: {row[3]}, Drilling: {row[4]}")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"Ошибка: {e}")
+    finally:
+        session.close()
+
+if __name__ == "__main__":
+    fix_pq3_nomenclature()
+

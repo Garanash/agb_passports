@@ -90,7 +90,7 @@ class VedPassport(Base):
         serial_number = str(counter.current_value).zfill(6)
 
         # Формируем номер паспорта согласно правилам
-        if product_type == "коронка":
+        if product_type and product_type.lower() in ["коронка", "корона"]:
             # Коронки: AGB [Глубина бурения] [Матрица] [Серийный номер] [Год]
             if drilling_depth:
                 passport_number = f"AGB {drilling_depth} {matrix} {serial_number} {current_year_suffix}"
