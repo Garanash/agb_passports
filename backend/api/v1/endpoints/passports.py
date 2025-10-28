@@ -161,20 +161,28 @@ def debug_passports(db: Session = Depends(get_db)):
 
 @router.get("/public-passports")
 def public_passports(
+    page: int = 1,
+    page_size: int = 20,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение всех паспортов для архива"""
+    """Получение всех паспортов для архива с пагинацией"""
     try:
         # Админы видят все паспорта, пользователи - только свои
         if current_user.role == "admin":
-            passports = db.query(VedPassport).order_by(VedPassport.created_at.desc()).all()
+            query = db.query(VedPassport).order_by(VedPassport.created_at.desc())
+            total_count = query.count()
         else:
-            passports = db.query(VedPassport).filter(
+            query = db.query(VedPassport).filter(
                 VedPassport.created_by == current_user.id
-            ).order_by(VedPassport.created_at.desc()).all()
+            ).order_by(VedPassport.created_at.desc())
+            total_count = query.count()
 
-        print(f"[public-passports] Получено {len(passports)} паспортов для пользователя {current_user.id} (роль: {current_user.role})")
+        # Применяем пагинацию
+        skip = (page - 1) * page_size
+        passports = query.offset(skip).limit(page_size).all()
+
+        print(f"[public-passports] Получено {len(passports)} паспортов для пользователя {current_user.id} (роль: {current_user.role}), страница {page}, всего: {total_count}")
 
         # Создаем объекты для ответа с загруженными связанными данными
         result_passports = []
@@ -221,7 +229,15 @@ def public_passports(
             }
             result_passports.append(passport_data)
 
-        return result_passports
+        return {
+            "passports": result_passports,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": (total_count + page_size - 1) // page_size
+            }
+        }
     except Exception as e:
         print(f"Ошибка при получении паспортов: {e}")
         import traceback

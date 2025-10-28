@@ -28,22 +28,66 @@ export function usePassports() {
   const [passports, setPassports] = useState<Passport[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const pageSize = 20
 
   useEffect(() => {
-    fetchPassports()
+    fetchPassports(1)
   }, [])
 
-  const fetchPassports = async () => {
+  const fetchPassports = async (page: number = 1, append: boolean = false) => {
     try {
-      setIsLoading(true)
-      const data = await passportsAPI.getAll()
-      setPassports(data)
+      if (append) {
+        setIsLoadingMore(true)
+      } else {
+        setIsLoading(true)
+      }
+      const data = await passportsAPI.getAll(page, pageSize)
+      
+      // Обрабатываем новый формат ответа с пагинацией
+      if (data.passports && data.pagination) {
+        if (append) {
+          setPassports(prev => [...prev, ...data.passports])
+        } else {
+          setPassports(data.passports)
+        }
+        setCurrentPage(data.pagination.current_page)
+        setTotalPages(data.pagination.total_pages)
+        setTotalCount(data.pagination.total_count)
+      } else {
+        // Фолбэк для старого формата
+        if (Array.isArray(data)) {
+          if (append) {
+            setPassports(prev => [...prev, ...data])
+          } else {
+            setPassports(data)
+          }
+        } else if (data.passports) {
+          if (append) {
+            setPassports(prev => [...prev, ...data.passports])
+          } else {
+            setPassports(data.passports)
+          }
+        }
+      }
+      
       setError(null)
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Ошибка загрузки паспортов')
       console.error('Error fetching passports:', err)
     } finally {
       setIsLoading(false)
+      setIsLoadingMore(false)
+    }
+  }
+
+  const loadMore = async () => {
+    if (currentPage < totalPages && !isLoadingMore) {
+      const nextPage = currentPage + 1
+      await fetchPassports(nextPage, true)
     }
   }
 
@@ -125,6 +169,11 @@ export function usePassports() {
     passports,
     isLoading,
     error,
+    currentPage,
+    totalPages,
+    totalCount,
+    isLoadingMore,
+    loadMore,
     createPassport,
     createBulkPassports,
     archivePassport,
