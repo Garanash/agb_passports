@@ -1089,7 +1089,7 @@ export default function MainApp() {
                              </button>
                            </div>
                          )}
-                       )}
+                      ) : null}
                      </div>
                    </div>
                  )}
