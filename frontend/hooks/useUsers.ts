@@ -25,12 +25,17 @@ export function useUsers() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true)
+      setError(null)
       const data = await usersAPI.getAll()
       setUsers(data)
-      setError(null)
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка загрузки пользователей')
+      const errorMessage = err.response?.data?.detail || err.message || 'Ошибка загрузки пользователей'
+      setError(errorMessage)
       console.error('Error fetching users:', err)
+      // Если ошибка авторизации, не показываем её как критическую
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        console.error('Authorization error - user may not have admin rights')
+      }
     } finally {
       setIsLoading(false)
     }

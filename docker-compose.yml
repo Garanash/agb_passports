@@ -51,10 +51,25 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: agb_frontend
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    ports:
-      - "3001:3000"
+      NEXT_PUBLIC_API_URL: http://backend:8000
+    expose:
+      - "3000"
     depends_on:
+      - backend
+    networks:
+      - agb_network
+    restart: unless-stopped
+
+  # Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: agb_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
       - backend
     networks:
       - agb_network

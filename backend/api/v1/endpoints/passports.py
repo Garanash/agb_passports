@@ -82,13 +82,16 @@ def get_ved_passports(
 ):
     """Получение списка паспортов ВЭД"""
     try:
-        # Админы видят все активные паспорта, пользователи - только свои
+        # Админы видят все активные паспорта, пользователи - только свои (любого статуса)
         if current_user.role == "admin":
-            passports = db.query(VedPassport).filter(VedPassport.status == "active").limit(10).all()
+            passports = db.query(VedPassport).filter(
+                (VedPassport.status == "active") | (VedPassport.status.is_(None))
+            ).limit(10).all()
         else:
             passports = db.query(VedPassport).filter(
-                VedPassport.status == "active",
                 VedPassport.created_by == current_user.id
+            ).filter(
+                (VedPassport.status == "active") | (VedPassport.status.is_(None))
             ).limit(10).all()
 
         # Возвращаем простые данные без обработки
@@ -168,7 +171,7 @@ def public_passports(
 ):
     """Получение всех паспортов для архива с пагинацией"""
     try:
-        # Админы видят все паспорта, пользователи - только свои
+        # Админы видят все паспорта, пользователи - только свои (включая все статусы)
         if current_user.role == "admin":
             query = db.query(VedPassport).order_by(VedPassport.created_at.desc())
             total_count = query.count()

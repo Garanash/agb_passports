@@ -25,7 +25,10 @@ export default function LoginPage() {
     try {
       const success = await login(data.username, data.password)
       if (success) {
-        window.location.href = '/'
+        // Используем router для навигации вместо window.location
+        setTimeout(() => {
+          window.location.href = '/'
+        }, 100)
       }
     } catch (error) {
       console.error('Login error:', error)

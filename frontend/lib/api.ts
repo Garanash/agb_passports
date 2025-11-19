@@ -9,10 +9,21 @@ declare global {
   }
 }
 
-// Получаем настройки из переменных окружения или глобальной конфигурации
-const API_BASE_URL = (typeof window !== 'undefined' && window.API_CONFIG?.API_URL) || 
-                     process.env.NEXT_PUBLIC_API_URL || 
-                     'http://localhost:8000'
+// Функция для получения базового URL API
+function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return process.env.NEXT_PUBLIC_API_URL || ''
+  }
+  
+  // Проверяем глобальную конфигурацию из config.js
+  if (window.API_CONFIG?.API_URL !== undefined) {
+    return window.API_CONFIG.API_URL
+  }
+  
+  // Используем переменную окружения или пустую строку для относительных путей
+  return process.env.NEXT_PUBLIC_API_URL || ''
+}
+
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'AGB Passports'
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'
 
@@ -20,8 +31,9 @@ const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'
 const isProduction = process.env.NODE_ENV === 'production'
 
 // Создаем экземпляр axios с базовой конфигурацией
+// Используем пустую строку для относительных путей через nginx
 const api = axios.create({
-  baseURL: API_BASE_URL || 'http://localhost:8000',
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
     'X-App-Name': APP_NAME,
@@ -29,6 +41,17 @@ const api = axios.create({
   },
   timeout: 30000, // 30 секунд таймаут
 })
+
+// Обновляем baseURL при изменении конфигурации
+if (typeof window !== 'undefined') {
+  // Ждем загрузки config.js и обновляем baseURL
+  window.addEventListener('load', () => {
+    const newBaseUrl = getApiBaseUrl()
+    if (newBaseUrl !== api.defaults.baseURL) {
+      api.defaults.baseURL = newBaseUrl
+    }
+  })
+}
 
 // Интерцептор для добавления токена авторизации
 api.interceptors.request.use(
@@ -50,6 +73,20 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Логируем ошибки для отладки
+    if (error.response) {
+      console.error('API Error:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        url: error.config?.url,
+        data: error.response.data
+      })
+    } else if (error.request) {
+      console.error('Network Error:', error.message)
+    } else {
+      console.error('Error:', error.message)
+    }
+    
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token')
@@ -187,22 +224,22 @@ export const passportsAPI = {
 // API методы для пользователей (только для админов)
 export const usersAPI = {
   getAll: async () => {
-    const response = await api.get('/api/v1/auth/users/')
+    const response = await api.get('/api/v1/users/')
     return response.data
   },
 
   create: async (data: any) => {
-    const response = await api.post('/api/v1/auth/users/', data)
+    const response = await api.post('/api/v1/users/', data)
     return response.data
   },
 
   update: async (id: number, data: any) => {
-    const response = await api.patch(`/api/v1/auth/users/${id}`, data)
+    const response = await api.put(`/api/v1/users/${id}`, data)
     return response.data
   },
 
   delete: async (id: number) => {
-    const response = await api.delete(`/api/v1/auth/users/${id}`)
+    const response = await api.delete(`/api/v1/users/${id}`)
     return response.data
   },
 }

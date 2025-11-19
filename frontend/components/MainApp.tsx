@@ -18,9 +18,12 @@ import {
   Cog6ToothIcon,
   ArrowDownTrayIcon,
   DocumentArrowDownIcon,
-  TableCellsIcon
+  TableCellsIcon,
+  CubeIcon,
+  PencilIcon
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
+import { nomenclatureAPI } from '../lib/api'
 
 interface FormData {
   nomenclature_id: number
@@ -60,6 +63,11 @@ export default function MainApp() {
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
   const [selectedPassportIds, setSelectedPassportIds] = useState<number[]>([])
   const [showArchived, setShowArchived] = useState(false)
+  const [nomenclatureSearchTerm, setNomenclatureSearchTerm] = useState('')
+  const [editingNomenclature, setEditingNomenclature] = useState<any>(null)
+  const [showEditNomenclatureModal, setShowEditNomenclatureModal] = useState(false)
+  const [allNomenclature, setAllNomenclature] = useState<any[]>([])
+  const [isLoadingNomenclature, setIsLoadingNomenclature] = useState(false)
 
   const {
     register,
@@ -186,7 +194,7 @@ export default function MainApp() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/passports/multiple`, {
+      const response = await fetch(`/api/v1/passports/multiple`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -411,7 +419,7 @@ export default function MainApp() {
 
     setIsLoadingUsers(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
+      const response = await fetch(`/api/v1/users/`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -443,6 +451,68 @@ export default function MainApp() {
     setShowEditUserModal(true)
   }
 
+  // Функции для управления номенклатурой
+  const loadAllNomenclature = async () => {
+    setIsLoadingNomenclature(true)
+    try {
+      const data = await nomenclatureAPI.getAll()
+      setAllNomenclature(data)
+    } catch (error: any) {
+      console.error('Ошибка при загрузке номенклатуры:', error)
+      toast.error(error.response?.data?.detail || 'Ошибка при загрузке номенклатуры')
+    } finally {
+      setIsLoadingNomenclature(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'nomenclature' && user?.role === 'admin') {
+      loadAllNomenclature()
+    }
+  }, [activeTab, user?.role])
+
+  const editNomenclature = (nomenclatureItem: any) => {
+    setEditingNomenclature(nomenclatureItem)
+    setShowEditNomenclatureModal(true)
+  }
+
+  const archiveNomenclature = async (nomenclatureId: number) => {
+    if (!confirm('Вы уверены, что хотите архивировать эту номенклатуру?')) {
+      return
+    }
+
+    try {
+      await nomenclatureAPI.update(nomenclatureId, { is_active: false })
+      toast.success('Номенклатура архивирована')
+      loadAllNomenclature()
+    } catch (error: any) {
+      console.error('Ошибка при архивировании номенклатуры:', error)
+      toast.error(error.response?.data?.detail || 'Ошибка при архивировании номенклатуры')
+    }
+  }
+
+  const saveNomenclature = async (formData: any) => {
+    try {
+      if (editingNomenclature) {
+        await nomenclatureAPI.update(editingNomenclature.id, formData)
+        toast.success('Номенклатура обновлена')
+      }
+      setShowEditNomenclatureModal(false)
+      setEditingNomenclature(null)
+      loadAllNomenclature()
+    } catch (error: any) {
+      console.error('Ошибка при сохранении номенклатуры:', error)
+      toast.error(error.response?.data?.detail || 'Ошибка при сохранении номенклатуры')
+    }
+  }
+
+  // Фильтрация номенклатуры для управления
+  const filteredAllNomenclature = allNomenclature.filter(item =>
+    item.name?.toLowerCase().includes(nomenclatureSearchTerm.toLowerCase()) ||
+    item.code_1c?.toLowerCase().includes(nomenclatureSearchTerm.toLowerCase()) ||
+    item.article?.toLowerCase().includes(nomenclatureSearchTerm.toLowerCase())
+  )
+
   const deleteUser = async (userId: number) => {
     console.log('deleteUser вызвана с ID:', userId)
     if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
@@ -457,7 +527,7 @@ export default function MainApp() {
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/${userId}`, {
+      const response = await fetch(`/api/v1/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -571,6 +641,17 @@ export default function MainApp() {
                   >
                     <UserGroupIcon className="h-5 w-5 mr-3" />
                     Пользователи
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('nomenclature')}
+                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                      activeTab === 'nomenclature'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <CubeIcon className="h-5 w-5 mr-3" />
+                    Номенклатура
                   </button>
                   <button
                     onClick={() => router.push('/add-nomenclature')}
@@ -1239,6 +1320,126 @@ export default function MainApp() {
               </div>
             </div>
           )}
+
+          {/* Вкладка управления номенклатурой */}
+          {activeTab === 'nomenclature' && user?.role === 'admin' && (
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Управление номенклатурой</h1>
+                <p className="text-gray-600 mt-1">Просмотр и редактирование данных номенклатуры</p>
+              </div>
+
+              {/* Поиск */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+                <div className="relative">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Поиск номенклатуры..."
+                    value={nomenclatureSearchTerm}
+                    onChange={(e) => setNomenclatureSearchTerm(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Таблица номенклатуры */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Код 1С
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Наименование
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Артикул
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Матрица
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Тип продукта
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Статус
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Действия
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {isLoadingNomenclature ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                            Загрузка...
+                          </td>
+                        </tr>
+                      ) : filteredAllNomenclature.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                            Номенклатура не найдена
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAllNomenclature.map((item) => (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {item.code_1c}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-500">
+                              {item.name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item.article || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item.matrix || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {item.product_type || '-'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                item.is_active 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {item.is_active ? 'Активна' : 'Архив'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => editNomenclature(item)}
+                                  className="text-blue-600 hover:text-blue-900 flex items-center"
+                                >
+                                  <PencilIcon className="h-4 w-4 mr-1" />
+                                  Редактировать
+                                </button>
+                                {item.is_active && (
+                                  <button
+                                    onClick={() => archiveNomenclature(item.id)}
+                                    className="text-orange-600 hover:text-orange-900"
+                                  >
+                                    Архивировать
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1273,7 +1474,7 @@ export default function MainApp() {
                 }
 
                 try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/`, {
+                  const response = await fetch(`/api/v1/users/`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -1440,7 +1641,7 @@ export default function MainApp() {
                     updateData.password = password
                   }
 
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/users/${editingUser.id}`, {
+                  const response = await fetch(`/api/v1/users/${editingUser.id}`, {
                     method: 'PUT',
                     headers: {
                       'Content-Type': 'application/json',
@@ -1545,6 +1746,190 @@ export default function MainApp() {
                       setEditingUser(null)
                     }}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    Сохранить
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно редактирования номенклатуры */}
+      {showEditNomenclatureModal && editingNomenclature && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Редактировать номенклатуру</h3>
+                <button
+                  onClick={() => {
+                    setShowEditNomenclatureModal(false)
+                    setEditingNomenclature(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target as HTMLFormElement)
+                const updateData: any = {
+                  code_1c: formData.get('code_1c') as string,
+                  name: formData.get('name') as string,
+                  article: formData.get('article') as string || null,
+                  matrix: formData.get('matrix') as string || null,
+                  drilling_depth: formData.get('drilling_depth') as string || null,
+                  height: formData.get('height') as string || null,
+                  thread: formData.get('thread') as string || null,
+                  product_type: formData.get('product_type') as string,
+                  is_active: formData.get('is_active') === 'true'
+                }
+                await saveNomenclature(updateData)
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Код 1С <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="code_1c"
+                      required
+                      defaultValue={editingNomenclature.code_1c}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите код 1С"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Наименование <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      required
+                      defaultValue={editingNomenclature.name}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите наименование"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Артикул
+                      </label>
+                      <input
+                        type="text"
+                        name="article"
+                        defaultValue={editingNomenclature.article || ''}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Введите артикул"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Матрица
+                      </label>
+                      <input
+                        type="text"
+                        name="matrix"
+                        defaultValue={editingNomenclature.matrix || ''}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Введите матрицу"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Глубина бурения
+                      </label>
+                      <input
+                        type="text"
+                        name="drilling_depth"
+                        defaultValue={editingNomenclature.drilling_depth || ''}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Глубина бурения"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Высота
+                      </label>
+                      <input
+                        type="text"
+                        name="height"
+                        defaultValue={editingNomenclature.height || ''}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Высота"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Резьба
+                      </label>
+                      <input
+                        type="text"
+                        name="thread"
+                        defaultValue={editingNomenclature.thread || ''}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Резьба"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип продукта <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="product_type"
+                      required
+                      defaultValue={editingNomenclature.product_type}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите тип продукта"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        name="is_active"
+                        defaultChecked={editingNomenclature.is_active}
+                        value="true"
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Активна</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="mt-6 flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditNomenclatureModal(false)
+                      setEditingNomenclature(null)
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                   >
                     Отмена
                   </button>
