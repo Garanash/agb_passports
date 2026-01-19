@@ -25,6 +25,9 @@ COPY backend/ ./backend/
 COPY load_nomenclature.py .
 COPY run_backend.py .
 
+# Создаем директорию для шаблонов
+RUN mkdir -p /app/backend/utils/templates
+
 # Создаем директорию для логов
 RUN mkdir -p /app/logs
 
