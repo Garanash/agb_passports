@@ -42,6 +42,7 @@ services:
       - agb_network
     volumes:
       - ./Номенклатура алмазный инстурмент ALFA.xlsx:/app/nomenclature.xlsx
+      - ./backend/utils/templates:/app/backend/utils/templates:ro
     restart: unless-stopped
 
   # Frontend
