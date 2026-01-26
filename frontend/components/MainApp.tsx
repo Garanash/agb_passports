@@ -20,10 +20,14 @@ import {
   DocumentArrowDownIcon,
   TableCellsIcon,
   CubeIcon,
-  PencilIcon
+  PencilIcon,
+  DocumentArrowUpIcon,
+  RectangleStackIcon
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { nomenclatureAPI } from '../lib/api'
+import TemplateEditor from './TemplateEditor'
+import StickerTemplateEditor from './StickerTemplateEditor'
 
 interface FormData {
   nomenclature_id: number
@@ -44,8 +48,8 @@ interface OrderData {
 }
 
 export default function MainApp() {
-  const { nomenclature, isLoading: nomenclatureLoading } = useNomenclature()
-  const { passports, refetchPassports, exportSelectedPassportsExcel, currentPage, totalPages, totalCount, isLoadingMore, loadMore } = usePassports()
+  const { nomenclature, isLoading: nomenclatureLoading, error: nomenclatureError } = useNomenclature()
+  const { passports, refetchPassports, exportSelectedPassportsExcel, exportStickersDocx, currentPage, totalPages, totalCount, isLoadingMore, loadMore } = usePassports()
   const { user, logout } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('create')
@@ -63,11 +67,26 @@ export default function MainApp() {
   const [archiveSearchTerm, setArchiveSearchTerm] = useState('')
   const [selectedPassportIds, setSelectedPassportIds] = useState<number[]>([])
   const [showArchived, setShowArchived] = useState(false)
+  const [stickersSearchTerm, setStickersSearchTerm] = useState('')
+  const [selectedStickerIds, setSelectedStickerIds] = useState<number[]>([])
   const [nomenclatureSearchTerm, setNomenclatureSearchTerm] = useState('')
   const [editingNomenclature, setEditingNomenclature] = useState<any>(null)
   const [showEditNomenclatureModal, setShowEditNomenclatureModal] = useState(false)
   const [allNomenclature, setAllNomenclature] = useState<any[]>([])
   const [isLoadingNomenclature, setIsLoadingNomenclature] = useState(false)
+  const [showCreateNomenclatureModal, setShowCreateNomenclatureModal] = useState(false)
+  const [newNomenclature, setNewNomenclature] = useState({
+    code_1c: '',
+    name: '',
+    article: '',
+    matrix: '',
+    drilling_depth: '',
+    height: '',
+    thread: '',
+    product_type: '',
+    is_active: true
+  })
+  const [isUploadingNomenclature, setIsUploadingNomenclature] = useState(false)
 
   const {
     register,
@@ -85,12 +104,33 @@ export default function MainApp() {
   const watchedNomenclatureId = watch('nomenclature_id')
   const watchedQuantity = watch('quantity')
 
+  // Функция для преобразования типа продукта в формат "Русский / English"
+  const getToolType = (productType: string): string => {
+    const productTypeLower = (productType || '').toLowerCase()
+    let productTypeRu = "Буровой инструмент"
+    let productTypeEn = "Drilling tool"
+    
+    if (productTypeLower.includes('коронка') || productTypeLower.includes('crown')) {
+      productTypeRu = "Алмазная буровая коронка"
+      productTypeEn = "Diamond drill bit"
+    } else if (productTypeLower.includes('инструмент') || productTypeLower.includes('tool')) {
+      productTypeRu = "Буровой инструмент"
+      productTypeEn = "Drilling tool"
+    }
+    
+    return `${productTypeRu} / ${productTypeEn}`
+  }
+
   // Фильтрация номенклатуры по поисковому запросу
-  const filteredNomenclature = nomenclature.filter(item =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.code_1c.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.article.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredNomenclature = nomenclature.filter(item => {
+    if (!searchTerm) return true // Показываем все, если поиск пустой
+    const searchLower = searchTerm.toLowerCase()
+    return (
+      (item.name && item.name.toLowerCase().includes(searchLower)) ||
+      (item.code_1c && item.code_1c.toLowerCase().includes(searchLower)) ||
+      (item.article && item.article.toLowerCase().includes(searchLower))
+    )
+  })
 
   // Фильтрация паспортов по поисковому запросу архива и статусу
   const filteredPassports = passports.filter(passport => {
@@ -107,6 +147,21 @@ export default function MainApp() {
     if (!archiveSearchTerm) return true
 
     const searchLower = archiveSearchTerm.toLowerCase()
+    return (
+      passport.passport_number?.toLowerCase().includes(searchLower) ||
+      passport.order_number?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.name?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.code_1c?.toLowerCase().includes(searchLower) ||
+      passport.nomenclature?.article?.toLowerCase().includes(searchLower)
+    )
+  })
+
+  // Фильтрация паспортов для наклеек
+  const filteredStickers = passports.filter(passport => {
+    // Фильтр по поисковому запросу
+    if (!stickersSearchTerm) return true
+
+    const searchLower = stickersSearchTerm.toLowerCase()
     return (
       passport.passport_number?.toLowerCase().includes(searchLower) ||
       passport.order_number?.toLowerCase().includes(searchLower) ||
@@ -256,7 +311,7 @@ export default function MainApp() {
     const excelData = createdPassports.map((passport, index) => ({
       '№': index + 1,
       'Номер паспорта': passport.passport_number,
-      'Номенклатура': passport.nomenclature_name,
+      'Номенклатура': passport.nomenclature?.name || 'Не указано',
       'Номер заказа': passport.order_number,
       'Дата создания': new Date(passport.created_at).toLocaleDateString('ru-RU'),
       'Время создания': new Date(passport.created_at).toLocaleTimeString('ru-RU')
@@ -367,6 +422,51 @@ export default function MainApp() {
     setSelectedPassportIds([])
   }
 
+  const selectAllStickers = () => {
+    setSelectedStickerIds(filteredStickers.map(p => p.id))
+  }
+
+  const deselectAllStickers = () => {
+    setSelectedStickerIds([])
+  }
+
+  const exportSelectedStickers = async () => {
+    if (selectedStickerIds.length === 0) {
+      toast.error('Выберите паспорта для экспорта наклеек')
+      return
+    }
+    try {
+      const file = await exportStickersDocx(selectedStickerIds)
+      
+      // Просто скачиваем файл без проверок
+      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const fileName = `stickers_${timestamp}.docx`
+      
+      // Преобразуем в Blob
+      const blob = file instanceof Blob ? file : new Blob([file], { 
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+      })
+      
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
+      
+      toast.success(`Экспортировано ${selectedStickerIds.length} наклеек`)
+    } catch (error: any) {
+      console.error('Ошибка при экспорте наклеек:', error)
+      const errorMessage = error.response?.data?.detail || error.message || 'Ошибка экспорта наклеек'
+      toast.error(`Ошибка экспорта наклеек: ${errorMessage}`)
+    }
+  }
+
   const exportSelectedToPdf = async () => {
     if (selectedPassportIds.length === 0) {
       toast.error('Выберите паспорта для экспорта')
@@ -394,6 +494,41 @@ export default function MainApp() {
     } catch (error: any) {
       console.error('Ошибка при экспорте Excel:', error)
       toast.error('Ошибка экспорта паспортов в Excel')
+    }
+  }
+
+  const exportSelectedToStickers = async () => {
+    if (selectedPassportIds.length === 0) {
+      toast.error('Выберите паспорта для экспорта наклеек')
+      return
+    }
+    try {
+      const file = await exportStickersDocx(selectedPassportIds)
+      
+      // Просто скачиваем файл без проверок
+      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      const fileName = `stickers_${timestamp}.docx`
+      
+      const blob = file instanceof Blob ? file : new Blob([file], { 
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+      })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      
+      setTimeout(() => {
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+      }, 100)
+      
+      toast.success(`Экспортировано ${selectedPassportIds.length} наклеек`)
+    } catch (error: any) {
+      console.error('Ошибка при экспорте наклеек:', error)
+      const errorMessage = error.response?.data?.detail || error.message || 'Ошибка экспорта наклеек'
+      toast.error(`Ошибка экспорта наклеек: ${errorMessage}`)
     }
   }
 
@@ -513,6 +648,79 @@ export default function MainApp() {
     item.article?.toLowerCase().includes(nomenclatureSearchTerm.toLowerCase())
   )
 
+  // Функции для создания номенклатуры
+  const handleCreateNomenclature = async () => {
+    try {
+      await nomenclatureAPI.create(newNomenclature)
+      toast.success('Номенклатура добавлена')
+      setNewNomenclature({
+        code_1c: '',
+        name: '',
+        article: '',
+        matrix: '',
+        drilling_depth: '',
+        height: '',
+        thread: '',
+        product_type: '',
+        is_active: true
+      })
+      setShowCreateNomenclatureModal(false)
+      loadAllNomenclature()
+    } catch (error: any) {
+      console.error('Ошибка при создании номенклатуры:', error)
+      toast.error(error.response?.data?.detail || 'Ошибка при создании номенклатуры')
+    }
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsUploadingNomenclature(true)
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data, { type: 'array' })
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet) as any[]
+
+      let successCount = 0
+      let errorCount = 0
+
+      for (const row of jsonData) {
+        try {
+          const nomenclature = {
+            code_1c: String(row['Код 1С'] || row['code_1c'] || ''),
+            name: String(row['Наименование'] || row['name'] || ''),
+            article: String(row['Артикул'] || row['article'] || ''),
+            matrix: String(row['Матрица'] || row['matrix'] || ''),
+            drilling_depth: String(row['Глубина бурения'] || row['drilling_depth'] || ''),
+            height: String(row['Высота'] || row['height'] || ''),
+            thread: String(row['Резьба'] || row['thread'] || ''),
+            product_type: String(row['Тип продукта'] || row['product_type'] || 'Коронка'),
+            is_active: true
+          }
+
+          if (nomenclature.code_1c && nomenclature.name) {
+            await nomenclatureAPI.create(nomenclature)
+            successCount++
+          }
+        } catch (error: any) {
+          console.error('Ошибка при создании номенклатуры:', error)
+          errorCount++
+        }
+      }
+
+      toast.success(`Загружено успешно: ${successCount}, ошибок: ${errorCount}`)
+      event.target.value = ''
+      loadAllNomenclature()
+    } catch (error) {
+      console.error('Ошибка при обработке файла:', error)
+      toast.error('Ошибка при обработке файла')
+    } finally {
+      setIsUploadingNomenclature(false)
+    }
+  }
+
   const deleteUser = async (userId: number) => {
     console.log('deleteUser вызвана с ID:', userId)
     if (!confirm('Вы уверены, что хотите удалить этого пользователя?')) {
@@ -629,6 +837,17 @@ export default function MainApp() {
                 <ArchiveBoxIcon className="h-5 w-5 mr-3" />
                 Архив паспортов
               </button>
+              <button
+                onClick={() => setActiveTab('stickers')}
+                className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                  activeTab === 'stickers'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                <RectangleStackIcon className="h-5 w-5 mr-3" />
+                Архив наклеек
+              </button>
               {user?.role === 'admin' && (
                 <>
                   <button
@@ -654,11 +873,26 @@ export default function MainApp() {
                     Номенклатура
                   </button>
                   <button
-                    onClick={() => router.push('/add-nomenclature')}
-                    className="w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                    onClick={() => setActiveTab('templates')}
+                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                      activeTab === 'templates'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
                   >
-                    <PlusIcon className="h-5 w-5 mr-3" />
-                    Добавить номенклатуру
+                    <DocumentTextIcon className="h-5 w-5 mr-3" />
+                    Шаблоны
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('sticker-template-editor')}
+                    className={`w-full flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors duration-200 ${
+                      activeTab === 'sticker-template-editor'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <PencilIcon className="h-5 w-5 mr-3" />
+                    Редактор шаблона
                   </button>
                 </>
               )}
@@ -704,23 +938,27 @@ export default function MainApp() {
                 {/* Таблица с номенклатурой */}
                 <div className="space-y-4">
                   {/* Заголовки таблицы */}
-                  <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-700 border-b border-gray-200 pb-2">
-                    <div className="col-span-6">Номенклатура</div>
-                    <div className="col-span-2">Код</div>
-                    <div className="col-span-2">Артикул</div>
-                    <div className="col-span-1">Кол-во</div>
-                    <div className="col-span-1">Действия</div>
-                  </div>
+                  {selectedItems.length > 0 && (
+                    <div className="grid grid-cols-12 gap-4 items-center py-2 border-b-2 border-gray-300 font-semibold text-xs text-gray-700 uppercase">
+                      <div className="col-span-4">Номенклатура</div>
+                      <div className="col-span-2">Код 1С</div>
+                      <div className="col-span-2">Артикул</div>
+                      <div className="col-span-3">Буровой инструмент / Tool type</div>
+                      <div className="col-span-1">Кол-во</div>
+                    </div>
+                  )}
 
                   {/* Строки с номенклатурой */}
                   {selectedItems.map((item, index) => (
                     <div key={index} className="grid grid-cols-12 gap-4 items-center py-2 border-b border-gray-100">
-                      <div className="col-span-6">
+                      <div className="col-span-4">
                         <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                        <div className="text-xs text-gray-500">{item.product_type}</div>
                       </div>
                       <div className="col-span-2 text-sm text-gray-600">{item.code_1c}</div>
                       <div className="col-span-2 text-sm text-gray-600">{item.article}</div>
+                      <div className="col-span-3 text-sm text-gray-700 font-medium">
+                        {item.name}
+                      </div>
                       <div className="col-span-1">
                         <input
                           type="number"
@@ -734,14 +972,6 @@ export default function MainApp() {
                           }}
                           className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
-                      </div>
-                      <div className="col-span-1">
-                        <button
-                          onClick={() => removeFromSelection(index)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -776,9 +1006,21 @@ export default function MainApp() {
                       {/* Список номенклатуры */}
                       {showNomenclatureList && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                          {filteredNomenclature.length === 0 ? (
+                          {nomenclatureLoading ? (
                             <div className="px-4 py-3 text-sm text-gray-500">
-                              Номенклатура не найдена
+                              Загрузка номенклатуры...
+                            </div>
+                          ) : nomenclatureError ? (
+                            <div className="px-4 py-3 text-sm text-red-500">
+                              Ошибка загрузки: {nomenclatureError}
+                            </div>
+                          ) : nomenclature.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500">
+                              Номенклатура не загружена
+                            </div>
+                          ) : filteredNomenclature.length === 0 ? (
+                            <div className="px-4 py-3 text-sm text-gray-500">
+                              Номенклатура не найдена по запросу "{searchTerm}"
                             </div>
                           ) : (
                             filteredNomenclature.map((item) => (
@@ -790,9 +1032,9 @@ export default function MainApp() {
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
-                                    <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                    <div className="text-sm font-medium text-gray-900">{item.name || 'Без названия'}</div>
                                     <div className="text-xs text-gray-500 mt-1">
-                                      Код: {item.code_1c} | Артикул: {item.article}
+                                      Код: {item.code_1c || '—'} | Артикул: {item.article || '—'}
                                     </div>
                                   </div>
                                   <DocumentTextIcon className="h-5 w-5 text-gray-400" />
@@ -925,7 +1167,7 @@ export default function MainApp() {
                             {passport.passport_number}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Номенклатура: {passport.nomenclature_name}
+                            Номенклатура: {passport.nomenclature?.name || 'Не указано'}
                           </div>
                           <div className="text-xs text-gray-500">
                             Заказ: {passport.order_number} | Создан: {new Date(passport.created_at).toLocaleString('ru-RU')}
@@ -1017,6 +1259,14 @@ export default function MainApp() {
                                  >
                                    <TableCellsIcon className="h-4 w-4 mr-2" />
                                    Экспорт выбранных в Excel ({selectedPassportIds.length})
+                                 </button>
+                                 <button
+                                   onClick={exportSelectedToStickers}
+                                   disabled={selectedPassportIds.length === 0}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 border border-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                 >
+                                   <DocumentTextIcon className="h-4 w-4 mr-2" />
+                                   Экспорт наклеек ({selectedPassportIds.length})
                                  </button>
                                </div>
                                
@@ -1185,6 +1435,222 @@ export default function MainApp() {
                    </div>
                  )}
 
+          {activeTab === 'stickers' && (
+            <div className="max-w-6xl mx-auto">
+              <div className="mb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Архив наклеек</h1>
+                <p className="text-gray-600 mt-1">Просмотр и экспорт наклеек для паспортов</p>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                {filteredStickers.length === 0 ? (
+                  stickersSearchTerm ? (
+                    <div className="text-center py-12">
+                      <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Ничего не найдено</h3>
+                      <p className="text-gray-600">Попробуйте изменить поисковый запрос</p>
+                      <button
+                        onClick={() => setStickersSearchTerm('')}
+                        className="mt-4 inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                      >
+                        Очистить поиск
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <RectangleStackIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">Наклейки не найдены</h3>
+                      <p className="text-gray-600">Создайте паспорта, чтобы появились наклейки</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {stickersSearchTerm ? `Найдено паспортов: ${filteredStickers.length}` : `Всего паспортов: ${passports.length}`}
+                        </h3>
+                        {stickersSearchTerm && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Поиск: "{stickersSearchTerm}"
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={selectAllStickers}
+                            className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200"
+                          >
+                            Выбрать все
+                          </button>
+                          <button
+                            onClick={deselectAllStickers}
+                            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                          >
+                            Снять выбор
+                          </button>
+                        </div>
+                        <button
+                          onClick={exportSelectedStickers}
+                          disabled={selectedStickerIds.length === 0}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 border border-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <DocumentTextIcon className="h-4 w-4 mr-2" />
+                          Экспорт наклеек ({selectedStickerIds.length})
+                        </button>
+                        <button
+                          onClick={() => {
+                            const allIds = filteredStickers.map(p => p.id)
+                            exportStickersDocx(allIds).then(async (file) => {
+                              // Просто скачиваем файл без проверок
+                              const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+                              const fileName = `stickers_all_${timestamp}.docx`
+                              
+                              const blob = file instanceof Blob ? file : new Blob([file], { 
+                                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                              })
+                              const url = window.URL.createObjectURL(blob)
+                              const link = document.createElement('a')
+                              link.href = url
+                              link.download = fileName
+                              document.body.appendChild(link)
+                              link.click()
+                              
+                              setTimeout(() => {
+                                document.body.removeChild(link)
+                                window.URL.revokeObjectURL(url)
+                              }, 100)
+                              
+                              toast.success(`Экспортировано ${allIds.length} наклеек`)
+                            }).catch(error => {
+                              console.error('Ошибка при экспорте наклеек:', error)
+                              toast.error('Ошибка экспорта наклеек')
+                            })
+                          }}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 border border-purple-600 rounded-md hover:bg-purple-700"
+                        >
+                          <DocumentTextIcon className="h-4 w-4 mr-2" />
+                          Экспорт всех наклеек
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
+                        value={stickersSearchTerm}
+                        onChange={(e) => setStickersSearchTerm(e.target.value)}
+                        className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                              <input
+                                type="checkbox"
+                                checked={selectedStickerIds.length === filteredStickers.length && filteredStickers.length > 0}
+                                onChange={(e) => e.target.checked ? selectAllStickers() : deselectAllStickers()}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Номер паспорта
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Номенклатура
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Номер заказа
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Дата создания
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Действия
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredStickers.map((passport) => (
+                            <tr key={passport.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedStickerIds.includes(passport.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedStickerIds(prev => [...prev, passport.id])
+                                    } else {
+                                      setSelectedStickerIds(prev => prev.filter(id => id !== passport.id))
+                                    }
+                                  }}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {passport.passport_number}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {passport.nomenclature?.name || 'Не указано'}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {passport.order_number}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {new Date(passport.created_at).toLocaleDateString('ru-RU')}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button
+                                  onClick={() => {
+                                    exportStickersDocx([passport.id]).then(async (file) => {
+                                      // ВАЖНО: используем .docx расширение для DOCX файлов
+                                      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+                                      const fileName = `sticker_${passport.passport_number}_${timestamp}.docx`
+                                      
+                                      // Просто скачиваем файл без проверок
+                                      const blob = file instanceof Blob ? file : new Blob([file], { 
+                                        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                                      })
+                                      const url = window.URL.createObjectURL(blob)
+                                      const link = document.createElement('a')
+                                      link.href = url
+                                      link.download = fileName
+                                      document.body.appendChild(link)
+                                      link.click()
+                                      
+                                      setTimeout(() => {
+                                        document.body.removeChild(link)
+                                        window.URL.revokeObjectURL(url)
+                                      }, 100)
+                                      
+                                      toast.success('Наклейка экспортирована')
+                                    }).catch(error => {
+                                      console.error('Ошибка при экспорте наклейки:', error)
+                                      toast.error('Ошибка экспорта наклейки')
+                                    })
+                                  }}
+                                  className="text-purple-600 hover:text-purple-900"
+                                >
+                                  Экспорт наклейки
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {activeTab === 'users' && user?.role === 'admin' && (
             <div className="max-w-6xl mx-auto">
               <div className="mb-6">
@@ -1324,9 +1790,31 @@ export default function MainApp() {
           {/* Вкладка управления номенклатурой */}
           {activeTab === 'nomenclature' && user?.role === 'admin' && (
             <div className="max-w-7xl mx-auto">
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">Управление номенклатурой</h1>
-                <p className="text-gray-600 mt-1">Просмотр и редактирование данных номенклатуры</p>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Управление номенклатурой</h1>
+                  <p className="text-gray-600 mt-1">Просмотр и редактирование данных номенклатуры</p>
+                </div>
+                <div className="flex space-x-3">
+                  <label className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 cursor-pointer">
+                    <DocumentArrowUpIcon className="h-5 w-5 mr-2" />
+                    {isUploadingNomenclature ? 'Загрузка...' : 'Загрузить из Excel'}
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingNomenclature}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    onClick={() => setShowCreateNomenclatureModal(true)}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    <PlusIcon className="h-5 w-5 mr-2" />
+                    Создать номенклатуру
+                  </button>
+                </div>
               </div>
 
               {/* Поиск */}
@@ -1439,6 +1927,14 @@ export default function MainApp() {
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'templates' && user?.role === 'admin' && (
+            <TemplateEditor />
+          )}
+
+          {activeTab === 'sticker-template-editor' && user?.role === 'admin' && (
+            <StickerTemplateEditor />
           )}
         </div>
       </div>
@@ -1938,6 +2434,197 @@ export default function MainApp() {
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
                   >
                     Сохранить
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно создания номенклатуры */}
+      {showCreateNomenclatureModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Создать номенклатуру</h3>
+                <button
+                  onClick={() => {
+                    setShowCreateNomenclatureModal(false)
+                    setNewNomenclature({
+                      code_1c: '',
+                      name: '',
+                      article: '',
+                      matrix: '',
+                      drilling_depth: '',
+                      height: '',
+                      thread: '',
+                      product_type: '',
+                      is_active: true
+                    })
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={async (e) => {
+                e.preventDefault()
+                await handleCreateNomenclature()
+              }}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Код 1С <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newNomenclature.code_1c}
+                      onChange={(e) => setNewNomenclature({...newNomenclature, code_1c: e.target.value})}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите код 1С"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Наименование <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newNomenclature.name}
+                      onChange={(e) => setNewNomenclature({...newNomenclature, name: e.target.value})}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите наименование"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Артикул
+                      </label>
+                      <input
+                        type="text"
+                        value={newNomenclature.article}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, article: e.target.value})}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Введите артикул"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Матрица
+                      </label>
+                      <input
+                        type="text"
+                        value={newNomenclature.matrix}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, matrix: e.target.value})}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Введите матрицу"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Глубина бурения
+                      </label>
+                      <input
+                        type="text"
+                        value={newNomenclature.drilling_depth}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, drilling_depth: e.target.value})}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Глубина бурения"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Высота
+                      </label>
+                      <input
+                        type="text"
+                        value={newNomenclature.height}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, height: e.target.value})}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Высота"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Резьба
+                      </label>
+                      <input
+                        type="text"
+                        value={newNomenclature.thread}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, thread: e.target.value})}
+                        className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Резьба"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Тип продукта <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newNomenclature.product_type}
+                      onChange={(e) => setNewNomenclature({...newNomenclature, product_type: e.target.value})}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Введите тип продукта"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={newNomenclature.is_active}
+                        onChange={(e) => setNewNomenclature({...newNomenclature, is_active: e.target.checked})}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Активна</span>
+                    </label>
+                  </div>
+                </div>
+                
+                <div className="mt-6 flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateNomenclatureModal(false)
+                      setNewNomenclature({
+                        code_1c: '',
+                        name: '',
+                        article: '',
+                        matrix: '',
+                        drilling_depth: '',
+                        height: '',
+                        thread: '',
+                        product_type: '',
+                        is_active: true
+                      })
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    Создать
                   </button>
                 </div>
               </form>

@@ -76,6 +76,16 @@ export function usePassports() {
       
       setError(null)
     } catch (err: any) {
+      // Обработка ошибки 401 - неавторизован
+      if (err.response?.status === 401) {
+        // Очищаем токен и перенаправляем на страницу логина
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token')
+          localStorage.removeItem('user')
+          window.location.href = '/login'
+        }
+        return
+      }
       setError(err.response?.data?.detail || 'Ошибка загрузки паспортов')
       console.error('Error fetching passports:', err)
     } finally {
@@ -165,6 +175,15 @@ export function usePassports() {
     }
   }
 
+  const exportStickersDocx = async (passportIds: number[]) => {
+    try {
+      const response = await passportsAPI.exportStickersDocx(passportIds)
+      return response
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Ошибка экспорта наклеек')
+    }
+  }
+
   return {
     passports,
     isLoading,
@@ -182,6 +201,7 @@ export function usePassports() {
     exportBulkPassportPdf,
     exportPassportsExcel,
     exportSelectedPassportsExcel,
+    exportStickersDocx,
     refetchPassports: fetchPassports,
     refetch: fetchPassports,
   }

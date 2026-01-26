@@ -22,6 +22,7 @@ from backend.database import create_tables, create_async_tables
 from backend.api.v1.endpoints.passports import router as passports_router
 from backend.api.v1.endpoints.nomenclature import router as nomenclature_router
 from backend.api.v1.endpoints.users import router as users_router
+from backend.api.v1.endpoints.templates import router as templates_router
 from backend.api.auth import router as auth_router
 
 # Создаем приложение FastAPI
@@ -50,6 +51,7 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Аутентифи
 app.include_router(passports_router, prefix="/api/v1/passports", tags=["Паспорта"])
 app.include_router(nomenclature_router, prefix="/api/v1/nomenclature", tags=["Номенклатура"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["Пользователи"])
+app.include_router(templates_router, prefix="/api/v1/templates", tags=["Шаблоны"])
 
 @app.on_event("startup")
 async def startup_event():

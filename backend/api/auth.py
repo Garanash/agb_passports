@@ -26,7 +26,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 # Контекст для хеширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Создание токена доступа"""
@@ -52,18 +52,25 @@ def verify_token(token: str):
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Проверка пароля"""
-    # Проверяем простой пароль для админа
-    if hashed_password.startswith("bcrypt$"):
-        return plain_password == hashed_password.split("$", 1)[1]
-    # Проверяем sha256 хеш
-    elif hashed_password.startswith("sha256$"):
+    if not hashed_password:
+        return False
+    
+    # Проверяем sha256 хеш (должно быть первым, так как это наш формат)
+    if hashed_password.startswith("sha256$"):
         import hashlib
         expected_hash = hashed_password.split("$", 1)[1]
         actual_hash = hashlib.sha256(plain_password.encode()).hexdigest()
         return actual_hash == expected_hash
+    # Проверяем простой пароль для админа (legacy формат)
+    elif hashed_password.startswith("bcrypt$"):
+        return plain_password == hashed_password.split("$", 1)[1]
     # Для реальных bcrypt хешей используем стандартную проверку
     else:
-        return pwd_context.verify(plain_password, hashed_password)
+        try:
+            return pwd_context.verify(plain_password, hashed_password)
+        except Exception:
+            # Если passlib не может обработать хеш, возвращаем False
+            return False
 
 def get_password_hash(password: str) -> str:
     """Хеширование пароля"""
@@ -72,7 +79,7 @@ def get_password_hash(password: str) -> str:
     return f"sha256${hashlib.sha256(password.encode()).hexdigest()}"
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
     """Получение текущего пользователя"""
@@ -81,6 +88,9 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    if credentials is None:
+        raise credentials_exception
 
     token = credentials.credentials
     username = verify_token(token)
@@ -124,12 +134,12 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 async def login(
-    request: dict,
+    request: LoginRequest,
     db: Session = Depends(get_db)
 ):
     """Эндпоинт для входа в систему"""
-    username = request.get("username")
-    password = request.get("password")
+    username = request.username
+    password = request.password
 
     if not username or not password:
         raise HTTPException(

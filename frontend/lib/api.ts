@@ -1,247 +1,415 @@
-import axios from 'axios'
+/**
+ * API клиент для взаимодействия с backend
+ */
 
-// Типы для глобальной конфигурации
-declare global {
-  interface Window {
-    API_CONFIG?: {
-      API_URL: string
-    }
+// Определяем базовый URL API
+const getApiUrl = (): string => {
+  // В браузере используем относительный путь через nginx
+  if (typeof window !== 'undefined') {
+    return '/api'
   }
+  // На сервере (SSR) используем переменную окружения или дефолт
+  return process.env.NEXT_PUBLIC_API_URL || 'http://backend:8000/api'
 }
 
-// Функция для получения базового URL API
-function getApiBaseUrl(): string {
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || ''
-  }
-  
-  // Проверяем глобальную конфигурацию из config.js
-  if (window.API_CONFIG?.API_URL !== undefined) {
-    return window.API_CONFIG.API_URL
-  }
-  
-  // Используем переменную окружения или пустую строку для относительных путей
-  return process.env.NEXT_PUBLIC_API_URL || ''
+const API_BASE_URL = getApiUrl()
+
+// Вспомогательная функция для получения токена
+const getToken = (): string | null => {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('token')
 }
 
-const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || 'AGB Passports'
-const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0'
-
-// Определяем окружение
-const isProduction = process.env.NODE_ENV === 'production'
-
-// Создаем экземпляр axios с базовой конфигурацией
-// Используем пустую строку для относительных путей через nginx
-const api = axios.create({
-  baseURL: getApiBaseUrl(),
-  headers: {
+// Вспомогательная функция для выполнения запросов
+const fetchAPI = async (
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> => {
+  const token = getToken()
+  const url = `${API_BASE_URL}${endpoint}`
+  
+  const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'X-App-Name': APP_NAME,
-    'X-App-Version': APP_VERSION,
-  },
-  timeout: 30000, // 30 секунд таймаут
-})
-
-// Обновляем baseURL при изменении конфигурации
-if (typeof window !== 'undefined') {
-  // Ждем загрузки config.js и обновляем baseURL
-  window.addEventListener('load', () => {
-    const newBaseUrl = getApiBaseUrl()
-    if (newBaseUrl !== api.defaults.baseURL) {
-      api.defaults.baseURL = newBaseUrl
-    }
-  })
-}
-
-// Интерцептор для добавления токена авторизации
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('token')
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`
-      }
-    }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
+    ...options.headers,
   }
-)
-
-// Интерцептор для обработки ошибок авторизации
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // Логируем ошибки для отладки
-    if (error.response) {
-      console.error('API Error:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        url: error.config?.url,
-        data: error.response.data
-      })
-    } else if (error.request) {
-      console.error('Network Error:', error.message)
-    } else {
-      console.error('Error:', error.message)
-    }
-    
-    if (error.response?.status === 401) {
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  })
+  
+  if (!response.ok) {
+    // Обработка 401 - неавторизован
+    if (response.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        window.location.href = '/login'
+        // Не делаем редирект здесь, чтобы компоненты могли обработать ошибку
       }
     }
-    return Promise.reject(error)
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+    throw { response: { data: error, status: response.status } }
   }
-)
+  
+  return response
+}
 
-// API методы для авторизации
+// API для аутентификации
 export const authAPI = {
   login: async (username: string, password: string) => {
-    const response = await api.post('/api/v1/auth/login', {
-      username,
-      password,
+    const response = await fetchAPI('/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
     })
-    return response.data
+    return response.json()
   },
-
-  getCurrentUser: async () => {
-    const response = await api.get('/api/v1/auth/me')
-    return response.data
-  },
-
+  
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
     }
   },
+  
+  getCurrentUser: async () => {
+    const response = await fetchAPI('/v1/auth/me')
+    return response.json()
+  },
 }
 
-// API методы для номенклатуры
+// API для паспортов
+export const passportsAPI = {
+  getAll: async (page: number = 1, pageSize: number = 20) => {
+    const response = await fetchAPI(`/v1/passports/?page=${page}&page_size=${pageSize}`)
+    return response.json()
+  },
+  
+  getById: async (id: number) => {
+    const response = await fetchAPI(`/v1/passports/${id}`)
+    return response.json()
+  },
+  
+  create: async (passportData: any) => {
+    const response = await fetchAPI('/v1/passports/', {
+      method: 'POST',
+      body: JSON.stringify(passportData),
+    })
+    return response.json()
+  },
+  
+  createBulk: async (bulkData: any) => {
+    const response = await fetchAPI('/v1/passports/bulk', {
+      method: 'POST',
+      body: JSON.stringify(bulkData),
+    })
+    return response.json()
+  },
+  
+  archive: async (id: number) => {
+    const response = await fetchAPI(`/v1/passports/${id}/archive`, {
+      method: 'POST',
+    })
+    return response.json()
+  },
+  
+  activate: async (id: number) => {
+    const response = await fetchAPI(`/v1/passports/${id}/activate`, {
+      method: 'POST',
+    })
+    return response.json()
+  },
+  
+  exportPdf: async (id: number): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/${id}/export/pdf`
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  exportBulkPdf: async (passportIds: number[]): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/bulk/pdf`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(passportIds),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  exportExcel: async (): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/excel`
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  exportSelectedExcel: async (passportIds: number[]): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/excel/selected`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(passportIds),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  exportStickersDocx: async (passportIds: number[]): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/stickers/docx`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(passportIds),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  exportStickersPdf: async (passportIds: number[]): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/stickers/pdf`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(passportIds),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+}
+
+// API для номенклатуры
 export const nomenclatureAPI = {
   getAll: async () => {
-    const response = await api.get('/api/v1/nomenclature/')
-    return response.data
+    const response = await fetchAPI('/v1/nomenclature/')
+    return response.json()
   },
-
+  
   getById: async (id: number) => {
-    const response = await api.get(`/api/v1/nomenclature/${id}`)
-    return response.data
+    const response = await fetchAPI(`/v1/nomenclature/${id}`)
+    return response.json()
   },
-
-  create: async (data: any) => {
-    const response = await api.post('/api/v1/nomenclature/', data)
-    return response.data
+  
+  create: async (nomenclatureData: any) => {
+    const response = await fetchAPI('/v1/nomenclature/', {
+      method: 'POST',
+      body: JSON.stringify(nomenclatureData),
+    })
+    return response.json()
   },
-
-  update: async (id: number, data: any) => {
-    const response = await api.put(`/api/v1/nomenclature/${id}`, data)
-    return response.data
+  
+  update: async (id: number, nomenclatureData: any) => {
+    const response = await fetchAPI(`/v1/nomenclature/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(nomenclatureData),
+    })
+    return response.json()
   },
-
+  
   delete: async (id: number) => {
-    const response = await api.delete(`/api/v1/nomenclature/${id}`)
-    return response.data
+    const response = await fetchAPI(`/v1/nomenclature/${id}`, {
+      method: 'DELETE',
+    })
+    return response.json()
   },
 }
 
-// API методы для паспортов
-export const passportsAPI = {
-  getAll: async (page: number = 1, page_size: number = 20) => {
-    const response = await api.get(`/api/v1/passports/public-passports?page=${page}&page_size=${page_size}`)
-    return response.data
-  },
-
-  getArchive: async () => {
-    const response = await api.get('/api/v1/passports/archive/')
-    return response.data
-  },
-
-  create: async (data: any) => {
-    const response = await api.post('/api/v1/passports/', data)
-    return response.data
-  },
-
-  createBulk: async (data: any) => {
-    const response = await api.post('/api/v1/passports/bulk/', data)
-    return response.data
-  },
-
-  getById: async (id: number) => {
-    const response = await api.get(`/api/v1/passports/${id}`)
-    return response.data
-  },
-
-  archive: async (id: number) => {
-    const response = await api.post(`/api/v1/passports/${id}/archive`)
-    return response.data
-  },
-
-  activate: async (id: number) => {
-    const response = await api.post(`/api/v1/passports/${id}/activate`)
-    return response.data
-  },
-
-  exportPdf: async (id: number) => {
-    const response = await api.get(`/api/v1/passports/${id}/export/pdf`, {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-
-  exportPDF: async (id: number) => {
-    const response = await api.get(`/api/v1/passports/${id}/export/pdf`, {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-
-  exportBulkPdf: async (passportIds: number[]) => {
-    const response = await api.post('/api/v1/passports/export/bulk/pdf', passportIds, {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-
-  exportExcel: async () => {
-    const response = await api.get('/api/v1/passports/export/excel', {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-  exportSelectedExcel: async (passportIds: number[]) => {
-    const response = await api.post('/api/v1/passports/export/excel/selected', passportIds, {
-      responseType: 'blob',
-    })
-    return response.data
-  },
-}
-
-// API методы для пользователей (только для админов)
+// API для пользователей
 export const usersAPI = {
   getAll: async () => {
-    const response = await api.get('/api/v1/users/')
-    return response.data
+    const response = await fetchAPI('/v1/users/')
+    return response.json()
   },
-
-  create: async (data: any) => {
-    const response = await api.post('/api/v1/users/', data)
-    return response.data
+  
+  getById: async (id: number) => {
+    const response = await fetchAPI(`/v1/users/${id}`)
+    return response.json()
   },
-
-  update: async (id: number, data: any) => {
-    const response = await api.put(`/api/v1/users/${id}`, data)
-    return response.data
+  
+  create: async (userData: any) => {
+    const response = await fetchAPI('/v1/users/', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    })
+    return response.json()
   },
-
+  
+  update: async (id: number, userData: any) => {
+    const response = await fetchAPI(`/v1/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    })
+    return response.json()
+  },
+  
   delete: async (id: number) => {
-    const response = await api.delete(`/api/v1/users/${id}`)
-    return response.data
+    const response = await fetchAPI(`/v1/users/${id}`, {
+      method: 'DELETE',
+    })
+    return response.json()
   },
 }
 
-export default api
+// API для шаблонов
+export const templatesAPI = {
+  getAll: async () => {
+    const response = await fetchAPI('/v1/templates/')
+    return response.json()
+  },
+  
+  getVersions: async (templateType: string) => {
+    const response = await fetchAPI(`/v1/templates/${templateType}/versions`)
+    return response.json()
+  },
+  
+  getTemplate: async (templateType: string): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/templates/${templateType}`
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
+  uploadTemplate: async (templateType: string, file: File, createBackup: boolean = true) => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/templates/${templateType}/upload`
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('create_backup', createBackup.toString())
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.json()
+  },
+  
+  validateTemplate: async (templateType: string, file: File) => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/templates/${templateType}/validate`
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.json()
+  },
+  
+  restoreVersion: async (templateType: string, version: number) => {
+    const response = await fetchAPI(`/v1/templates/${templateType}/restore/${version}`, {
+      method: 'POST',
+    })
+    return response.json()
+  },
+  
+  saveFromHtml: async (templateType: string, htmlContent: string) => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/templates/${templateType}/save-from-html`
+    const formData = new FormData()
+    formData.append('html_content', htmlContent)
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.json()
+  },
+}

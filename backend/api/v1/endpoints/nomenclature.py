@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List
 from datetime import datetime
 from backend.models import VEDNomenclature, User
@@ -13,11 +14,32 @@ router = APIRouter()
 def get_nomenclature(db: Session = Depends(get_db)):
     """Получение списка номенклатуры"""
     try:
-        nomenclature = db.query(VEDNomenclature).all()
+        # Проверяем подключение к базе данных
+        db.execute(text("SELECT 1"))
+        
+        # Получаем все записи номенклатуры (включая неактивные для админов)
+        # Фильтруем только активную номенклатуру для обычных пользователей
+        nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.is_active == True).all()
+        print(f"✅ Получено {len(nomenclature)} записей номенклатуры")
+        import sys
+        sys.stdout.flush()
         return nomenclature
     except Exception as e:
-        print(f"Ошибка при получении номенклатуры: {e}")
-        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
+        error_msg = str(e)
+        error_type = type(e).__name__
+        print(f"❌ Ошибка при получении номенклатуры: {error_type}: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        import sys
+        sys.stdout.flush()
+        
+        # Более информативное сообщение об ошибке
+        if "password authentication failed" in error_msg.lower() or "authentication" in error_msg.lower():
+            raise HTTPException(status_code=500, detail=f"Ошибка аутентификации в базе данных: {error_msg}")
+        elif "connection" in error_msg.lower() or "connect" in error_msg.lower():
+            raise HTTPException(status_code=500, detail=f"Ошибка подключения к базе данных: {error_msg}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {error_msg}")
 
 @router.get("/{nomenclature_id}", response_model=VEDNomenclatureSchema)
 def get_nomenclature_by_id(nomenclature_id: int, db: Session = Depends(get_db)):

@@ -23,7 +23,7 @@ from backend.api.schemas import (
     MultiplePassportItem
 )
 from backend.api.auth import get_current_user, get_current_active_user, get_admin_user
-from backend.utils.pdf_generator import generate_bulk_passports_pdf
+from backend.utils.pdf_generator import generate_bulk_passports_pdf, generate_stickers_pdf_reportlab
 from backend.database import get_db, get_async_db
 
 router = APIRouter()
@@ -77,47 +77,94 @@ def get_archive_filters(
 
 @router.get("/")
 def get_ved_passports(
+    page: int = 1,
+    page_size: int = 20,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение списка паспортов ВЭД"""
+    """Получение списка паспортов ВЭД с пагинацией"""
     try:
         # Админы видят все активные паспорта, пользователи - только свои (любого статуса)
         if current_user.role == "admin":
-            passports = db.query(VedPassport).filter(
+            query = db.query(VedPassport).filter(
                 (VedPassport.status == "active") | (VedPassport.status.is_(None))
-            ).limit(10).all()
+            ).order_by(VedPassport.created_at.desc())
+            total_count = query.count()
         else:
-            passports = db.query(VedPassport).filter(
+            query = db.query(VedPassport).filter(
                 VedPassport.created_by == current_user.id
             ).filter(
                 (VedPassport.status == "active") | (VedPassport.status.is_(None))
-            ).limit(10).all()
+            ).order_by(VedPassport.created_at.desc())
+            total_count = query.count()
 
-        # Возвращаем простые данные без обработки
-        result = []
+        # Применяем пагинацию
+        skip = (page - 1) * page_size
+        passports = query.offset(skip).limit(page_size).all()
+
+        # Создаем объекты для ответа с загруженными связанными данными
+        result_passports = []
         for passport in passports:
             try:
-                result.append({
+                # Загружаем создателя паспорта
+                creator = db.query(User).filter(User.id == passport.created_by).first()
+                # Загружаем номенклатуру
+                nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
+
+                passport_data = {
                     "id": passport.id,
                     "passport_number": passport.passport_number,
+                    "title": passport.title,
+                    "description": passport.description,
                     "status": passport.status,
-                    "created_by": passport.created_by,
                     "order_number": passport.order_number,
+                    "quantity": passport.quantity,
+                    "created_by": passport.created_by,
                     "nomenclature_id": passport.nomenclature_id,
-                    "created_at": str(passport.created_at) if passport.created_at else None
-                })
+                    "created_at": passport.created_at.isoformat() if passport.created_at else None,
+                    "updated_at": passport.updated_at.isoformat() if passport.updated_at else None,
+                    "creator": {
+                        "id": creator.id if creator else None,
+                        "username": creator.username if creator else None,
+                        "email": creator.email if creator else None,
+                        "full_name": creator.full_name if creator else None,
+                        "role": creator.role if creator else None
+                    } if creator else None,
+                    "nomenclature": {
+                        "id": nomenclature.id if nomenclature else None,
+                        "code_1c": nomenclature.code_1c if nomenclature else None,
+                        "name": nomenclature.name if nomenclature else None,
+                        "article": nomenclature.article if nomenclature else None,
+                        "matrix": nomenclature.matrix if nomenclature else None,
+                        "drilling_depth": nomenclature.drilling_depth if nomenclature else None,
+                        "height": nomenclature.height if nomenclature else None,
+                        "thread": nomenclature.thread if nomenclature else None,
+                        "product_type": nomenclature.product_type if nomenclature else None,
+                        "is_active": nomenclature.is_active if nomenclature else None,
+                    } if nomenclature else None
+                }
+                result_passports.append(passport_data)
             except Exception as e:
                 print(f"Ошибка обработки паспорта {passport.id}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
-        return result
+        return {
+            "passports": result_passports,
+            "pagination": {
+                "current_page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": (total_count + page_size - 1) // page_size if total_count > 0 else 0
+            }
+        }
 
     except Exception as e:
         print(f"Ошибка при получении паспортов: {e}")
         import traceback
         traceback.print_exc()
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 
 @router.get("/test-database")
 def simple_test(db: Session = Depends(get_db)):
@@ -321,24 +368,30 @@ def get_user_archive(
 ):
     """Архив паспортов"""
     try:
+        from sqlalchemy.orm import joinedload
+        
         # Админы видят все архивированные паспорта, пользователи - только свои
+        query = db.query(VedPassport).options(
+            joinedload(VedPassport.nomenclature)
+        )
+        
         if current_user.role == "admin":
-            passports = db.query(VedPassport).filter(
+            passports = query.filter(
                 VedPassport.status == "archived"
             ).order_by(VedPassport.created_at.desc()).all()
         else:
-            passports = db.query(VedPassport).filter(
+            passports = query.filter(
                 VedPassport.created_by == current_user.id,
                 VedPassport.status == "archived"
             ).order_by(VedPassport.created_at.desc()).all()
+
+        print(f"[archive] Получено {len(passports)} архивированных паспортов для пользователя {current_user.id} (роль: {current_user.role})")
 
         # Создаем объекты для ответа с загруженными связанными данными
         result_passports = []
         for passport in passports:
             # Загружаем создателя паспорта
             creator = db.query(User).filter(User.id == passport.created_by).first()
-            # Загружаем номенклатуру
-            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport.nomenclature_id).first()
 
             # Создаем объект для ответа
             passport_data = {
@@ -360,12 +413,15 @@ def get_user_archive(
                     "full_name": creator.full_name if creator else None,
                     "role": creator.role if creator else None
                 } if creator else None,
-                "nomenclature": nomenclature
+                "nomenclature": passport.nomenclature  # Используем загруженную через joinedload
             }
             result_passports.append(passport_data)
 
         return result_passports
     except Exception as e:
+        print(f"❌ Ошибка при получении архива: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 
 @router.post("/", response_model=APIResponse)
@@ -693,6 +749,43 @@ async def activate_passport(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка активации паспорта: {str(e)}")
 
+@router.get("/{passport_id}/export/pdf")
+async def export_passport_pdf(
+    passport_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Экспорт одного паспорта в PDF"""
+    try:
+        passport = await db.get(VedPassport, passport_id)
+        if not passport:
+            raise HTTPException(status_code=404, detail="Паспорт не найден")
+        
+        # Проверяем права доступа
+        if passport.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Нет доступа к этому паспорту")
+        
+        # Генерируем PDF для одного паспорта
+        pdf_bytes = generate_bulk_passports_pdf([passport])
+        
+        # Генерируем имя файла
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"passport_{passport.passport_number}_{timestamp}.pdf"
+        
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка при экспорте паспорта в PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта PDF: {str(e)}")
+
 # Временно отключаем роут для получения конкретного паспорта
 # @router.get("/passport/{passport_id}", response_model=VedPassportSchema)
 # def get_ved_passport(
@@ -901,3 +994,187 @@ def export_selected_passports_excel(
         print(f"Ошибка при экспорте выбранных паспортов в Excel: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка экспорта выбранных паспортов в Excel: {str(e)}")
 
+
+@router.post("/export/stickers/pdf")
+async def export_stickers_pdf(
+    passport_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Экспорт наклеек для выбранных паспортов в PDF через reportLab (8 наклеек на страницу)"""
+    try:
+        if not passport_ids:
+            raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта наклеек")
+        
+        # Получаем выбранные паспорта
+        from sqlalchemy import select
+        passports_query = select(VedPassport).where(VedPassport.id.in_(passport_ids))
+        result = await db.execute(passports_query)
+        passports = result.scalars().all()
+        
+        # Проверяем права доступа и загружаем связанные данные
+        accessible_passports = []
+        for passport in passports:
+            if passport.created_by == current_user.id or current_user.role == "admin":
+                # Загружаем связанные данные
+                await db.refresh(passport, ['nomenclature'])
+                # Убеждаемся, что номенклатура загружена
+                if not passport.nomenclature and passport.nomenclature_id:
+                    from sqlalchemy import select
+                    from backend.models import VEDNomenclature
+                    nom_query = select(VEDNomenclature).where(VEDNomenclature.id == passport.nomenclature_id)
+                    nom_result = await db.execute(nom_query)
+                    passport.nomenclature = nom_result.scalar_one_or_none()
+                accessible_passports.append(passport)
+        
+        if not accessible_passports:
+            raise HTTPException(status_code=404, detail="Выбранные паспорта не найдены или нет доступа")
+        
+        print(f"📋 Экспорт наклеек: {len(accessible_passports)} паспортов")
+        import sys
+        sys.stdout.flush()
+        
+        # Генерируем PDF с наклейками через reportLab
+        pdf_bytes = generate_stickers_pdf_reportlab(accessible_passports)
+        
+        # Генерируем имя файла с датой
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"stickers_{timestamp}.pdf"
+        
+        # Создаем BytesIO объект для StreamingResponse
+        pdf_stream = io.BytesIO(pdf_bytes)
+        
+        # Принудительно устанавливаем правильные заголовки для PDF
+        # ВАЖНО: filename должен быть с расширением .pdf
+        if not filename.endswith('.pdf'):
+            filename = filename.rsplit('.', 1)[0] + '.pdf'
+        
+        headers = {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        
+        print(f"📤 Отправляем PDF файл: {filename}, размер: {len(pdf_bytes)} байт, Content-Type: application/pdf")
+        import sys
+        sys.stdout.flush()
+        
+        return StreamingResponse(
+            pdf_stream,
+            media_type="application/pdf",
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка экспорта наклеек в PDF: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта наклеек в PDF: {str(e)}")
+
+
+@router.post("/export/stickers/docx")
+async def export_stickers_docx(
+    passport_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Экспорт наклеек для выбранных паспортов в DOCX из шаблона с логотипом и штрихкодами"""
+    try:
+        if not passport_ids:
+            raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта наклеек")
+        
+        # Получаем выбранные паспорта
+        from sqlalchemy import select
+        passports_query = select(VedPassport).where(VedPassport.id.in_(passport_ids))
+        result = await db.execute(passports_query)
+        passports = result.scalars().all()
+        
+        # Проверяем права доступа и загружаем связанные данные
+        accessible_passports = []
+        for passport in passports:
+            if passport.created_by == current_user.id or current_user.role == "admin":
+                # Загружаем связанные данные
+                await db.refresh(passport, ['nomenclature'])
+                # Убеждаемся, что номенклатура загружена
+                if not passport.nomenclature and passport.nomenclature_id:
+                    from sqlalchemy import select
+                    from backend.models import VEDNomenclature
+                    nom_query = select(VEDNomenclature).where(VEDNomenclature.id == passport.nomenclature_id)
+                    nom_result = await db.execute(nom_query)
+                    passport.nomenclature = nom_result.scalar_one_or_none()
+                accessible_passports.append(passport)
+        
+        if not accessible_passports:
+            raise HTTPException(status_code=404, detail="Выбранные паспорта не найдены или нет доступа")
+        
+        print(f"📋 Экспорт наклеек (DOCX из шаблона): {len(accessible_passports)} паспортов")
+        import sys
+        sys.stdout.flush()
+        
+        # Используем генерацию DOCX из шаблона с логотипом и штрихкодами
+        from backend.utils.sticker_template_generator import generate_stickers_from_template
+        import zipfile
+        
+        docx_bytes = generate_stickers_from_template(accessible_passports)
+        
+        # КРИТИЧЕСКИ ВАЖНО: Проверяем, что это действительно DOCX (ZIP архив), а не PDF
+        try:
+            zip_buffer = io.BytesIO(docx_bytes)
+            with zipfile.ZipFile(zip_buffer, 'r') as zip_check:
+                if 'word/document.xml' not in zip_check.namelist():
+                    raise ValueError("Результат не является валидным DOCX файлом")
+            print(f"✅ Валидация DOCX пройдена: {len(docx_bytes)} байт")
+            import sys
+            sys.stdout.flush()
+        except (zipfile.BadZipFile, ValueError) as validation_err:
+            error_msg = f"Сгенерированный файл не является валидным DOCX: {validation_err}"
+            print(f"❌ {error_msg}")
+            import sys
+            sys.stdout.flush()
+            raise HTTPException(status_code=500, detail=error_msg)
+        
+        # Генерируем имя файла с датой
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"stickers_{timestamp}.docx"
+        
+        # Создаем BytesIO объект для StreamingResponse
+        docx_stream = io.BytesIO(docx_bytes)
+        
+        # Убеждаемся, что filename имеет расширение .docx
+        if not filename.endswith('.docx'):
+            filename = filename.rsplit('.', 1)[0] + '.docx'
+        
+        # Устанавливаем правильные заголовки для DOCX
+        headers = {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(docx_bytes)),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        
+        print(f"📤 Отправляем DOCX файл: {filename}, размер: {len(docx_bytes)} байт, Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        import sys
+        sys.stdout.flush()
+        
+        return StreamingResponse(
+            docx_stream,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка при экспорте наклеек: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта наклеек: {str(e)}")
