@@ -69,6 +69,7 @@ export default function StickerTemplateEditor() {
   const [isItalic, setIsItalic] = useState(false)
   const [isUnderline, setIsUnderline] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
 
   const autoSaveRef = useRef<NodeJS.Timeout | null>(null)
