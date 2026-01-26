@@ -412,4 +412,47 @@ export const templatesAPI = {
     
     return response.json()
   },
+
+  logo: {
+    upload: async (file: File) => {
+      const token = getToken()
+      const url = `${API_BASE_URL}/v1/templates/logo/upload`
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      })
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+        throw { response: { data: error, status: response.status } }
+      }
+      
+      return response.json()
+    },
+
+    get: async (): Promise<Blob> => {
+      const token = getToken()
+      const url = `${API_BASE_URL}/v1/templates/logo`
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+        throw { response: { data: error, status: response.status } }
+      }
+      
+      return response.blob()
+    },
+  },
 }
