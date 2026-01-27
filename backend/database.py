@@ -64,7 +64,10 @@ def get_db():
 async def get_async_db():
     """Получение асинхронной сессии базы данных"""
     async with AsyncSession(bind=async_engine, expire_on_commit=False) as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.close()
 
 def create_tables():
     """Создание таблиц в базе данных"""
