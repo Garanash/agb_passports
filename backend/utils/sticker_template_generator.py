@@ -205,17 +205,17 @@ def generate_from_excel_template(passports, template_path):
     wb = load_workbook(template_path)
     ws = wb.active
     
-    # Группируем паспорта по 8 на страницу
-    for page_idx in range(0, len(passports), 8):
-        passport_group = passports[page_idx:page_idx+8]
+    # Группируем паспорта по 4 на страницу (2x2)
+    for page_idx in range(0, len(passports), 4):
+        passport_group = passports[page_idx:page_idx+4]
         
-        # Создаем таблицу 2x4 для страницы
-        table = doc.add_table(rows=4, cols=2)
+        # Создаем таблицу 2x2 для страницы
+        table = doc.add_table(rows=2, cols=2)
         
         # Настраиваем размеры таблицы и ячеек
         table.style = 'Table Grid'
-        sticker_width = Mm(110)  # Ширина наклейки - чуть шире (было 105)
-        sticker_height = Mm(74.25)  # Высота наклейки = 297/4
+        sticker_width = Mm(105)  # Ширина наклейки
+        sticker_height = Mm(148.5)  # Высота наклейки = 297/2 (для 2 строк)
         
         for row in table.rows:
             row.height = sticker_height
@@ -237,8 +237,8 @@ def generate_from_excel_template(passports, template_path):
                     tcMar.append(margin)
                 tcPr.append(tcMar)
         
-        # Заполняем ячейки
-        for row_idx in range(4):
+        # Заполняем ячейки (2x2 = 4 наклейки на странице)
+        for row_idx in range(2):
             for col_idx in range(2):
                 idx = row_idx * 2 + col_idx
                 cell = table.rows[row_idx].cells[col_idx]
@@ -309,7 +309,7 @@ def generate_from_excel_template(passports, template_path):
                     p_a1.alignment = 1  # CENTER
                     if logo_path and os.path.exists(logo_path):
                         try:
-                            # Логотип нормального размера (как было раньше)
+                            # Логотип нормального размера (18мм x 5.4мм)
                             logo_run = p_a1.add_run()
                             logo_run.add_picture(logo_path, width=Mm(18), height=Mm(5.4))
                             print(f"    ✅ Логотип добавлен в ячейку A1: {logo_path}, размер: 18мм x 5.4мм")
@@ -514,12 +514,12 @@ def generate_from_template_file(passports, template_path):
     section.top_margin = Mm(0)
     section.bottom_margin = Mm(0)
     
-    # Группируем паспорта по 8 на страницу (таблица 2x4)
-    for page_idx in range(0, len(passports), 8):
-        passport_group = passports[page_idx:page_idx+8]
+    # Группируем паспорта по 4 на страницу (таблица 2x2)
+    for page_idx in range(0, len(passports), 4):
+        passport_group = passports[page_idx:page_idx+4]
         
-        # Создаем таблицу 4x2 (4 строки, 2 колонки) = 8 наклеек на странице
-        table = doc.add_table(rows=4, cols=2)
+        # Создаем таблицу 2x2 (2 строки, 2 колонки) = 4 наклейки на странице
+        table = doc.add_table(rows=2, cols=2)
         table.style = None
         
         # Настраиваем таблицу
@@ -609,7 +609,7 @@ def generate_from_template_file(passports, template_path):
                 vAlign.set(qn('w:val'), 'top')
         
         # Заполняем таблицу наклейками
-        print(f"📄 Страница {page_idx // 8 + 1}: заполняем таблицу 2x4")
+        print(f"📄 Страница {page_idx // 4 + 1}: заполняем таблицу 2x2 (4 наклейки)")
         sys.stdout.flush()
         
         for row_idx in range(4):
@@ -1110,8 +1110,8 @@ def generate_stickers_standard(passports):
     section.page_width = Mm(210)
     
     # Группируем по 8 на страницу
-    for page_idx in range(0, len(passports), 8):
-        passport_group = passports[page_idx:page_idx+8]
+    for page_idx in range(0, len(passports), 4):
+        passport_group = passports[page_idx:page_idx+4]
         table = doc.add_table(rows=4, cols=2)
         
         for row_idx in range(4):
