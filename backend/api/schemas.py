@@ -50,7 +50,8 @@ class VEDNomenclatureUpdate(BaseModel):
 
 class VedPassportSchema(BaseModel):
     """Схема ВЭД паспорта"""
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
     id: int
     passport_number: str
@@ -75,7 +76,8 @@ class BulkPassportItem(BaseModel):
 
 class BulkPassportCreate(BaseModel):
     """Схема массового создания ВЭД паспортов"""
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
     
     order_number: str = Field(description="Номер заказа")
     title: Optional[str] = Field(None, description="Заголовок")
@@ -83,7 +85,8 @@ class BulkPassportCreate(BaseModel):
 
 class PassportWithNomenclature(BaseModel):
     """Паспорт с номенклатурой"""
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
     
     id: int
     passport_number: str
@@ -149,7 +152,8 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     """Схема ответа с информацией о пользователе"""
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
     id: int
     created_at: datetime
