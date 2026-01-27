@@ -5,11 +5,11 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
-from pydantic import ConfigDict
 
 class VEDNomenclatureSchema(BaseModel):
     """Схема номенклатуры ВЭД"""
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
     
     id: int
     code_1c: str

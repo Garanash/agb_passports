@@ -28,6 +28,14 @@ scp_copy() {
     sshpass -p "$PASSWORD" scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$@" 2>&1 | grep -v "Warning" || true
 }
 
+# Функция для копирования директории
+scp_copy_dir() {
+    local src=$1
+    local dst=$2
+    ssh_exec "mkdir -p $dst" 2>&1 | grep -v "Warning" || true
+    sshpass -p "$PASSWORD" scp -r -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$src" "$SERVER:$dst" 2>&1 | grep -v "Warning" || true
+}
+
 echo -e "${YELLOW}📤 Шаг 1: Синхронизация всех файлов...${NC}"
 scp_copy "$LOCAL_PATH/backend/requirements.txt" "$SERVER:$SERVER_PATH/backend/"
 scp_copy "$LOCAL_PATH/backend/utils/sticker_template_generator.py" "$SERVER:$SERVER_PATH/backend/utils/"
