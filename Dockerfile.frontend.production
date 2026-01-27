@@ -11,7 +11,7 @@ RUN npm ci --only=production
 COPY frontend/ .
 
 # Создаем production конфигурацию
-RUN echo "window.API_CONFIG = { API_URL: '${NEXT_PUBLIC_API_URL}' };" > public/config.js
+RUN mkdir -p public && echo "window.API_CONFIG = { API_URL: '${NEXT_PUBLIC_API_URL}' };" > public/config.js
 
 # Собираем приложение
 RUN npm run build
