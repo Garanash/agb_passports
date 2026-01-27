@@ -30,8 +30,9 @@ echo ""
 
 # 2. Проверка логотипа
 echo -e "${YELLOW}🖼️  Логотип:${NC}"
-if ssh_exec "test -f $SERVER_PATH/backend/utils/templates/logo.png" 2>&1 | grep -v "Warning" > /dev/null 2>&1; then
-    SIZE=$(ssh_exec "ls -lh $SERVER_PATH/backend/utils/templates/logo.png 2>/dev/null | awk '{print \$5}'" 2>&1 | grep -v "Warning" || echo "unknown")
+LOGO_CHECK=$(ssh_exec "test -f $SERVER_PATH/backend/utils/templates/logo.png && echo 'OK' || echo 'FAIL'" 2>&1 | grep -v "Warning" | tail -1)
+if [ "$LOGO_CHECK" = "OK" ]; then
+    SIZE=$(ssh_exec "ls -lh $SERVER_PATH/backend/utils/templates/logo.png 2>/dev/null | awk '{print \$5}'" 2>&1 | grep -v "Warning" | tail -1 || echo "unknown")
     echo -e "${GREEN}✅ Найден (размер: $SIZE)${NC}"
 else
     echo -e "${RED}❌ Не найден${NC}"
@@ -42,7 +43,8 @@ echo ""
 echo -e "${YELLOW}📄 Шаблоны:${NC}"
 TEMPLATES=("sticker_template.xlsx" "sticker_template.docx" "passport_template.docx")
 for template in "${TEMPLATES[@]}"; do
-    if ssh_exec "test -f $SERVER_PATH/backend/utils/templates/$template" 2>&1 | grep -v "Warning" > /dev/null 2>&1; then
+    CHECK=$(ssh_exec "test -f $SERVER_PATH/backend/utils/templates/$template && echo 'OK' || echo 'FAIL'" 2>&1 | grep -v "Warning" | tail -1)
+    if [ "$CHECK" = "OK" ]; then
         echo -e "${GREEN}✅ $template${NC}"
     else
         echo -e "${RED}❌ $template${NC}"
