@@ -24,6 +24,7 @@ services:
     container_name: agb_backend_prod
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-agb_passports_2024}@postgres:5432/agb_passports
+      ASYNC_DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-agb_passports_2024}@postgres:5432/agb_passports
       SECRET_KEY: ${SECRET_KEY:-your-secret-key-change-in-production}
       DEBUG: "False"
     ports:
@@ -35,6 +36,8 @@ services:
       - agb_network
     volumes:
       - ./logs:/app/logs
+      - ./backend/utils/templates:/app/backend/utils/templates:ro
+      - ./templates:/app/templates
 
   frontend:
     build:

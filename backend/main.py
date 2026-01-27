@@ -12,11 +12,16 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Загружаем переменные окружения из config.env
-config = dotenv_values("config.env")
-for key, value in config.items():
-    if key not in os.environ:
-        os.environ[key] = value
+# Загружаем переменные окружения из config.env (если существует)
+config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.env")
+if os.path.exists(config_path):
+    config = dotenv_values(config_path)
+    for key, value in config.items():
+        if key not in os.environ:
+            os.environ[key] = value
+else:
+    # Используем переменные окружения из Docker/системы
+    print("ℹ️ config.env не найден, используем переменные окружения из системы")
 
 from backend.database import create_tables, create_async_tables
 from backend.api.v1.endpoints.passports import router as passports_router

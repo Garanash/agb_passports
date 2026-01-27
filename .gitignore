@@ -317,8 +317,55 @@ Thumbs.db
 
 # Project specific
 config.env
+.env
+.env.*
+!.env.example
+!.env.prod.example
 logs/
 *.pdf
+# Исключаем xlsx и csv, но разрешаем шаблоны
 *.xlsx
+!backend/utils/templates/*.xlsx
 *.csv
 test_passports*
+
+# Бекапы БД - оставляем в репозитории для восстановления
+# backup_*.sql
+
+# Docker volumes
+postgres_data/
+
+# Временные файлы
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Логи
+*.log
+logs/
+
+# Собранные файлы
+frontend/.next/
+frontend/out/
+frontend/dist/
+backend/__pycache__/
+*.pyc
+
+# SSL сертификаты
+ssl/
+*.pem
+*.key
+*.crt
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
