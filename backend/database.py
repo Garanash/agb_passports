@@ -5,7 +5,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 import os
 
 # Настройки базы данных PostgreSQL
@@ -43,7 +44,8 @@ except Exception as e:
     print(f"❌ Ошибка создания async_engine для асинхронной БД: {e}")
     raise
 
-AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+# Для SQLAlchemy 1.4 используем sessionmaker с async_engine
+AsyncSessionLocal = sync_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
 
 Base = declarative_base()
 
