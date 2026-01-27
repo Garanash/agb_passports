@@ -7,7 +7,6 @@ python-multipart==0.0.6
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pydantic==1.10.13
-pydantic-settings==2.0.3
 reportlab==4.0.7
 cairosvg==2.7.1
 pandas==2.0.3
