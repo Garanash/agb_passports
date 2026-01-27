@@ -74,7 +74,7 @@ echo -e "${YELLOW}📤 Шаг 5: Синхронизация скриптов...$
 scp_copy_dir "$LOCAL_PATH/scripts" "$SERVER_PATH/"
 
 echo -e "${YELLOW}🔄 Шаг 6: Перезапуск контейнеров на сервере...${NC}"
-ssh_exec "cd $SERVER_PATH && docker-compose restart backend frontend" 2>&1 | grep -v "Warning" || true
+ssh_exec "cd $SERVER_PATH && (docker compose restart backend frontend || docker-compose restart backend frontend)" 2>&1 | grep -v "Warning" || true
 
 echo -e "${YELLOW}⏳ Ожидание запуска сервисов...${NC}"
 sleep 10
@@ -82,4 +82,4 @@ sleep 10
 echo -e "${GREEN}✅ Полная синхронизация завершена!${NC}"
 echo ""
 echo -e "${BLUE}📊 Проверка статуса:${NC}"
-ssh_exec "cd $SERVER_PATH && docker-compose ps" 2>&1 | grep -v "Warning" || true
+ssh_exec "cd $SERVER_PATH && (docker compose ps || docker-compose ps)" 2>&1 | grep -v "Warning" || true
