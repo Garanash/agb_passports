@@ -55,22 +55,27 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password:
         return False
     
-    # Проверяем sha256 хеш (должно быть первым, так как это наш формат)
-    if hashed_password.startswith("sha256$"):
-        import hashlib
-        expected_hash = hashed_password.split("$", 1)[1]
-        actual_hash = hashlib.sha256(plain_password.encode()).hexdigest()
-        return actual_hash == expected_hash
-    # Проверяем простой пароль для админа (legacy формат)
-    elif hashed_password.startswith("bcrypt$"):
-        return plain_password == hashed_password.split("$", 1)[1]
-    # Для реальных bcrypt хешей используем стандартную проверку
-    else:
-        try:
-            return pwd_context.verify(plain_password, hashed_password)
-        except Exception:
-            # Если passlib не может обработать хеш, возвращаем False
-            return False
+    try:
+        # Проверяем sha256 хеш (должно быть первым, так как это наш формат)
+        if hashed_password.startswith("sha256$"):
+            import hashlib
+            expected_hash = hashed_password.split("$", 1)[1]
+            actual_hash = hashlib.sha256(plain_password.encode()).hexdigest()
+            return actual_hash == expected_hash
+        # Проверяем простой пароль для админа (legacy формат)
+        elif hashed_password.startswith("bcrypt$"):
+            return plain_password == hashed_password.split("$", 1)[1]
+        # Для реальных bcrypt хешей используем стандартную проверку
+        else:
+            try:
+                return pwd_context.verify(plain_password, hashed_password)
+            except Exception:
+                # Если passlib не может обработать хеш, возвращаем False
+                return False
+    except Exception as e:
+        # Логируем ошибку для отладки
+        print(f"⚠️ Ошибка проверки пароля: {e}")
+        return False
 
 def get_password_hash(password: str) -> str:
     """Хеширование пароля"""
