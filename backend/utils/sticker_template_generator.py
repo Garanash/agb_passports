@@ -564,8 +564,8 @@ def generate_from_template_file(passports, template_path):
             tblCellMar.append(margin)
         tblPr.append(tblCellMar)
         
-        # Настраиваем ячейки
-        for row_idx in range(4):
+        # Настраиваем ячейки (2x2 = 4 наклейки)
+        for row_idx in range(2):
             for col_idx in range(2):
                 cell = table.rows[row_idx].cells[col_idx]
                 tcPr = cell._element.tcPr
