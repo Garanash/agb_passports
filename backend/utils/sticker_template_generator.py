@@ -169,6 +169,26 @@ def generate_from_excel_template(passports, template_path):
     logo_path_obj = manager.get_logo_path()
     logo_path = str(logo_path_obj) if logo_path_obj and logo_path_obj.exists() else None
     
+    # Дополнительная проверка и логирование
+    if not logo_path:
+        # Пробуем альтернативные пути
+        alt_paths = [
+            '/app/backend/utils/templates/logo.png',
+            '/app/templates/logo.png',
+            'backend/utils/templates/logo.png',
+            'templates/logo.png'
+        ]
+        for alt_path in alt_paths:
+            if os.path.exists(alt_path):
+                logo_path = alt_path
+                print(f"    ✅ Логотип найден по альтернативному пути: {logo_path}")
+                break
+        
+        if not logo_path:
+            print(f"    ⚠️ Логотип не найден ни по одному из путей!")
+    else:
+        print(f"    ✅ Логотип найден: {logo_path}")
+    
     # Создаем новый DOCX документ
     doc = Document()
     
@@ -292,11 +312,13 @@ def generate_from_excel_template(passports, template_path):
                             # Логотип нормального размера (как было раньше)
                             logo_run = p_a1.add_run()
                             logo_run.add_picture(logo_path, width=Mm(18), height=Mm(5.4))
-                            print(f"    ✅ Логотип добавлен: 18мм x 5.4мм")
+                            print(f"    ✅ Логотип добавлен в ячейку A1: {logo_path}, размер: 18мм x 5.4мм")
                         except Exception as e:
                             print(f"    ⚠️ Ошибка добавления логотипа: {e}")
                             import traceback
                             traceback.print_exc()
+                    else:
+                        print(f"    ⚠️ Логотип не найден для наклейки! Путь: {logo_path}")
                     
                     # B1: "Код номенклатуры:" + штрихкод
                     p_b1 = cell_b1.paragraphs[0]
@@ -459,6 +481,26 @@ def generate_from_template_file(passports, template_path):
     manager = get_template_manager()
     logo_path_obj = manager.get_logo_path()
     logo_path = str(logo_path_obj) if logo_path_obj and logo_path_obj.exists() else None
+    
+    # Дополнительная проверка и логирование
+    if not logo_path:
+        # Пробуем альтернативные пути
+        alt_paths = [
+            '/app/backend/utils/templates/logo.png',
+            '/app/templates/logo.png',
+            'backend/utils/templates/logo.png',
+            'templates/logo.png'
+        ]
+        for alt_path in alt_paths:
+            if os.path.exists(alt_path):
+                logo_path = alt_path
+                print(f"    ✅ Логотип найден по альтернативному пути: {logo_path}")
+                break
+        
+        if not logo_path:
+            print(f"    ⚠️ Логотип не найден ни по одному из путей!")
+    else:
+        print(f"    ✅ Логотип найден: {logo_path}")
     
     # Создаем новый документ
     doc = Document()
