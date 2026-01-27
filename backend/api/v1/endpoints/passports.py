@@ -653,8 +653,13 @@ async def export_bulk_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Ошибка при экспорте PDF: {e}")
-        raise HTTPException(status_code=500, detail=f"Ошибка экспорта PDF: {str(e)}")
+        error_msg = f"Ошибка при экспорте PDF: {e}"
+        print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
+        import sys
+        sys.stdout.flush()
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @router.post("/export/created/pdf", response_class=StreamingResponse)
 async def export_passports_pdf(
