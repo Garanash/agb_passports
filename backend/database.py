@@ -44,8 +44,12 @@ except Exception as e:
     print(f"❌ Ошибка создания async_engine для асинхронной БД: {e}")
     raise
 
-# Для SQLAlchemy 1.4 используем sessionmaker с async_engine
-AsyncSessionLocal = sync_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
+# Для SQLAlchemy 1.4 создаем AsyncSession напрямую через async_engine
+# async_sessionmaker появился только в SQLAlchemy 2.0
+# Используем альтернативный подход для 1.4
+def get_async_session():
+    """Создает асинхронную сессию (для SQLAlchemy 1.4)"""
+    return AsyncSession(bind=async_engine, expire_on_commit=False)
 
 Base = declarative_base()
 
@@ -59,7 +63,7 @@ def get_db():
 
 async def get_async_db():
     """Получение асинхронной сессии базы данных"""
-    async with AsyncSessionLocal() as session:
+    async with AsyncSession(bind=async_engine, expire_on_commit=False) as session:
         yield session
 
 def create_tables():
