@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:13
+    image: postgres:15-alpine
     container_name: agb_postgres_prod
     environment:
       POSTGRES_DB: agb_passports
