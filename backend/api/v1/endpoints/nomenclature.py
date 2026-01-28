@@ -110,7 +110,33 @@ def update_nomenclature(
         
         # Обновляем поля
         update_data = nomenclature_data.model_dump(exclude_unset=True)
+
+        # Защита от изменения первичного ключа
+        update_data.pop("id", None)
+
+        # Если меняем code_1c — проверяем уникальность
+        new_code_1c = update_data.get("code_1c")
+        if new_code_1c and new_code_1c != nomenclature.code_1c:
+            existing = (
+                db.query(VEDNomenclature)
+                .filter(
+                    VEDNomenclature.code_1c == new_code_1c,
+                    VEDNomenclature.id != nomenclature_id,
+                )
+                .first()
+            )
+            if existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Номенклатура с таким кодом 1С уже существует",
+                )
+
         for field, value in update_data.items():
+            # Не даём превратить обязательные поля в NULL
+            if field == "product_type" and (value is None or str(value).strip() == ""):
+                continue
+            if not hasattr(nomenclature, field):
+                continue
             setattr(nomenclature, field, value)
         
         nomenclature.updated_at = datetime.now()

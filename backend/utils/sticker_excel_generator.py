@@ -18,7 +18,7 @@ from backend.utils.template_manager import get_template_manager
 from backend.utils.barcode_generator import generate_barcode_image
 
 
-def copy_template_to_target(template_ws, target_ws, row_offset, col_offset):
+def copy_template_to_target(template_ws, target_ws, row_offset, col_offset, row_height_scale: float = 1.0):
     """
     Полностью копирует шаблон в целевой лист начиная с указанной позиции
     Копирует: значения, стили, размеры, объединения
@@ -34,12 +34,15 @@ def copy_template_to_target(template_ws, target_ws, row_offset, col_offset):
             target_col_letter = get_column_letter(col_offset + col_idx - 1)
             target_ws.column_dimensions[target_col_letter].width = source_width
     
-    # 2. Копируем высоты строк
+    # 2. Копируем высоты строк (с возможным масштабированием по высоте наклейки)
     for row_idx in range(1, STICKER_ROWS + 1):
         source_height = template_ws.row_dimensions[row_idx].height
         if source_height:
             target_row = row_offset + row_idx - 1
-            target_ws.row_dimensions[target_row].height = source_height
+            try:
+                target_ws.row_dimensions[target_row].height = float(source_height) * float(row_height_scale)
+            except Exception:
+                target_ws.row_dimensions[target_row].height = source_height
     
     # 3. Копируем объединенные ячейки
     for merged_range in template_ws.merged_cells.ranges:
@@ -390,7 +393,7 @@ def generate_stickers_excel(passports, template_path=None):
     STICKER_ROWS = template_ws.max_row
     STICKER_COLS = template_ws.max_column
     
-    print(f"    📐 Размеры одной наклейки: {STICKER_ROWS} строк × {STICKER_COLS} колонок")
+    print(f"    📐 Размеры одной наклейки (из шаблона): {STICKER_ROWS} строк × {STICKER_COLS} колонок")
     
     # Создаем новую рабочую книгу
     wb = Workbook()
@@ -400,12 +403,27 @@ def generate_stickers_excel(passports, template_path=None):
     # Список временных файлов для удаления после сохранения
     temp_files_to_cleanup = []
     
-    # Все наклейки в один столбец: каждая следующая под предыдущей
-    # Ширина колонок в пикселях: A=100, B=200, C=100 (Excel ~7 px на единицу ширины)
+    # Сетка наклеек: 2 по горизонтали × 4 по вертикали на лист (8 штук),
+    # далее следующая "страница" такой же сеткой ниже.
+    # Ширина ОДНОЙ наклейки: целимся в ~105 мм.
+    # При 96 DPI: 1 мм ≈ 3.78 px. 3 колонки суммарно ≈ 400 px → ~105 мм.
+    # Фиксированные ширины колонок наклейки в пикселях: A=100, B=200, C=100.
     COL_WIDTHS_PX = [100, 200, 100]
     # Логотип: размер 1.07 см x 3.61 см (1 см ≈ 37.8 px при 96 DPI)
     LOGO_WIDTH_CM, LOGO_HEIGHT_CM = 1.07, 3.61
     CM_TO_PX = 37.7952755906  # 96 DPI
+    PX_PER_MM = CM_TO_PX / 10.0
+    
+    # Целевая высота наклейки: 74.3 мм
+    TARGET_HEIGHT_MM = 74.3
+    target_height_px = TARGET_HEIGHT_MM * PX_PER_MM
+    current_height_px = sum(_row_height_px(template_ws, r) for r in range(1, STICKER_ROWS + 1))
+    if current_height_px > 0:
+        row_height_scale = float(target_height_px) / float(current_height_px)
+    else:
+        row_height_scale = 1.0
+    
+    print(f"    📐 Текущая высота наклейки ~{current_height_px:.1f} px, целевая ~{target_height_px:.1f} px, scale={row_height_scale:.3f}")
     
     # Счётчик реально сгенерированных наклеек (нужен для аккуратного смещения и разрывов страниц)
     stickers_generated = 0
@@ -414,13 +432,17 @@ def generate_stickers_excel(passports, template_path=None):
         if not passport.nomenclature:
             continue
         
-        # Смещение считаем по количеству уже добавленных наклеек, чтобы пропуски не ломали сетку
-        row_offset = 1 + stickers_generated * STICKER_ROWS
-        col_offset = 1
+        # Смещение считаем по количеству уже добавленных наклеек, чтобы пропуски не ломали сетку.
+        # Сетка 2×N: по 2 наклейки в ряду, каждые 4 ряда — новый лист.
+        row_block = stickers_generated // 2  # номер ряда наклеек (0,1,2,3,...), по 2 на ряд
+        col_block = stickers_generated % 2   # 0 — левая, 1 — правая наклейка
         
-        print(f"    📍 Наклейка {stickers_generated + 1}: row_offset={row_offset}, col_offset={col_offset}")
+        row_offset = 1 + row_block * STICKER_ROWS
+        col_offset = 1 + col_block * STICKER_COLS
         
-        copy_template_to_target(template_ws, ws, row_offset, col_offset)
+        print(f"    📍 Наклейка {stickers_generated + 1}: row_offset={row_offset}, col_offset={col_offset} (row_block={row_block}, col_block={col_block})")
+        
+        copy_template_to_target(template_ws, ws, row_offset, col_offset, row_height_scale=row_height_scale)
         # Фиксированная ширина колонок A, B, C в пикселях → единицы Excel
         for c in range(min(len(COL_WIDTHS_PX), STICKER_COLS)):
             _col_letter = get_column_letter(col_offset + c)
@@ -747,14 +769,14 @@ def generate_stickers_excel(passports, template_path=None):
             import traceback
             traceback.print_exc()
 
-        # Увеличиваем счётчик и после каждой второй наклейки ставим разрыв страницы,
-        # чтобы при печати на листе было по 2 наклейки.
+        # Увеличиваем счётчик и после каждых 8 наклеек (2×4) ставим разрыв страницы,
+        # чтобы при печати на листе было по 2 наклейки в ряд и 4 ряда на страницу.
         stickers_generated += 1
-        if stickers_generated % 2 == 0:
+        if stickers_generated % 8 == 0:
             break_row = row_offset + STICKER_ROWS - 1
             try:
                 ws.row_breaks.append(Break(id=break_row))
-                print(f"    📄 Установлен разрыв страницы после строки {break_row} (наклейки {stickers_generated})")
+                print(f"    📄 Установлен разрыв страницы после строки {break_row} (наклеек всего: {stickers_generated}, сетка 2×4)")
             except Exception as e:
                 print(f"    ⚠️ Не удалось установить разрыв страницы после строки {break_row}: {e}")
 
