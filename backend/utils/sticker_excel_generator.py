@@ -247,10 +247,11 @@ def _row_height_px(ws, row_1based):
     return float(h_pt) * (96.0 / 72.0)
 
 
-def _add_image_centered(ws, img: OpenpyxlImage, row_1based: int, col_1based: int, top_offset_px=None):
+def _add_image_centered(ws, img: OpenpyxlImage, row_1based: int, col_1based: int, top_offset_px=None, center_shift_down_px=None):
     """
     Вставляет изображение в ячейку (или объединение). По умолчанию — по центру.
-    top_offset_px: если задано, картинка выравнивается по горизонтали по центру, по вертикали — отступ от верха (для текста над картинкой).
+    top_offset_px: если задано, картинка по вертикали — отступ от верха (для текста над картинкой).
+    center_shift_down_px: если задано, картинка выравнивается по центру по вертикали, затем смещается вниз на столько пикселей.
     img.width/img.height должны быть заданы в пикселях.
     """
     merged = _find_merged_bounds(ws, row_1based, col_1based)
@@ -267,7 +268,9 @@ def _add_image_centered(ws, img: OpenpyxlImage, row_1based: int, col_1based: int
     img_h_px = float(getattr(img, "height", 0) or 0)
 
     off_x_px = max((cell_w_px - img_w_px) / 2.0, 0.0)
-    if top_offset_px is not None:
+    if center_shift_down_px is not None:
+        off_y_px = max((cell_h_px - img_h_px) / 2.0 + float(center_shift_down_px), 0.0)
+    elif top_offset_px is not None:
         off_y_px = max(float(top_offset_px), 0.0)
     else:
         off_y_px = max((cell_h_px - img_h_px) / 2.0, 0.0)
@@ -726,10 +729,11 @@ def generate_stickers_excel(passports, template_path=None):
                 if not isinstance(_cell, MergedCell):
                     _cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=getattr(_cell.alignment, 'wrap_text', False) if _cell.alignment else False)
                 barcode_img = OpenpyxlImage(stock_code_barcode_path)
-                # Штрихкод артикула делаем чуть меньше, чтобы уверенно помещался в ячейку
+                # Штрихкод артикула делаем чуть меньше, чтобы уверенно помещался в ячейку,
+                # и оставляем строго по центру ячейки без дополнительного смещения.
                 barcode_img.height = 32
                 barcode_img.width = 160
-                _add_image_centered(ws, barcode_img, barcode_row, barcode_col, top_offset_px=10)
+                _add_image_centered(ws, barcode_img, barcode_row, barcode_col)
                 print(f"    ✅ Штрихкод номенклатуры (артикул) по центру в {get_column_letter(barcode_col)}{barcode_row}")
         except Exception as e:
             print(f"    ⚠️ Ошибка добавления штрихкода артикула: {e}")
@@ -781,7 +785,7 @@ def generate_stickers_excel(passports, template_path=None):
                 barcode_img.height = 32
                 barcode_img.width = 160
                 # Штрихкод по центру ячейки (горизонтально и вертикально)
-                _add_image_centered(ws, barcode_img, barcode_row, barcode_col, top_offset_px=10)
+                _add_image_centered(ws, barcode_img, barcode_row, barcode_col, center_shift_down_px=10)
                 barcode_cell = f"{get_column_letter(barcode_col)}{barcode_row}"
                 print(f"    ✅ Серийный номер: текст сверху, штрихкод по центру ячейки — {barcode_cell}")
         except Exception as e:
