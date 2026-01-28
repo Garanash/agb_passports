@@ -49,7 +49,7 @@ interface OrderData {
 
 export default function MainApp() {
   const { nomenclature, isLoading: nomenclatureLoading, error: nomenclatureError } = useNomenclature()
-  const { passports, refetchPassports, exportSelectedPassportsExcel, exportStickersDocx, currentPage, totalPages, totalCount, isLoadingMore, loadMore } = usePassports()
+  const { passports, refetchPassports, exportSelectedPassportsExcel, exportStickersExcel, currentPage, totalPages, totalCount, isLoadingMore, loadMore } = usePassports()
   const { user, logout } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('create')
@@ -436,15 +436,15 @@ export default function MainApp() {
       return
     }
     try {
-      const file = await exportStickersDocx(selectedStickerIds)
+      const file = await exportStickersExcel(selectedStickerIds)
       
       // Просто скачиваем файл без проверок
       const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-      const fileName = `stickers_${timestamp}.docx`
+      const fileName = `stickers_${timestamp}.xlsx`
       
       // Преобразуем в Blob
       const blob = file instanceof Blob ? file : new Blob([file], { 
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
       })
       
       const url = window.URL.createObjectURL(blob)
@@ -503,14 +503,14 @@ export default function MainApp() {
       return
     }
     try {
-      const file = await exportStickersDocx(selectedPassportIds)
+      const file = await exportStickersExcel(selectedPassportIds)
       
       // Просто скачиваем файл без проверок
       const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-      const fileName = `stickers_${timestamp}.docx`
+      const fileName = `stickers_${timestamp}.xlsx`
       
       const blob = file instanceof Blob ? file : new Blob([file], { 
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
       })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -1502,13 +1502,13 @@ export default function MainApp() {
                         <button
                           onClick={() => {
                             const allIds = filteredStickers.map(p => p.id)
-                            exportStickersDocx(allIds).then(async (file) => {
+                            exportStickersExcel(allIds).then(async (file) => {
                               // Просто скачиваем файл без проверок
                               const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-                              const fileName = `stickers_all_${timestamp}.docx`
+                              const fileName = `stickers_all_${timestamp}.xlsx`
                               
                               const blob = file instanceof Blob ? file : new Blob([file], { 
-                                type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
                               })
                               const url = window.URL.createObjectURL(blob)
                               const link = document.createElement('a')
@@ -1608,14 +1608,14 @@ export default function MainApp() {
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 <button
                                   onClick={() => {
-                                    exportStickersDocx([passport.id]).then(async (file) => {
-                                      // ВАЖНО: используем .docx расширение для DOCX файлов
+                                    exportStickersExcel([passport.id]).then(async (file) => {
+                                      // ВАЖНО: используем .xlsx расширение для Excel файлов
                                       const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-                                      const fileName = `sticker_${passport.passport_number}_${timestamp}.docx`
+                                      const fileName = `sticker_${passport.passport_number}_${timestamp}.xlsx`
                                       
                                       // Просто скачиваем файл без проверок
                                       const blob = file instanceof Blob ? file : new Blob([file], { 
-                                        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
                                       })
                                       const url = window.URL.createObjectURL(blob)
                                       const link = document.createElement('a')

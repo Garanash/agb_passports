@@ -16,12 +16,9 @@ class TemplateManager:
     TEMPLATES_DIR = Path("/app/templates")
     BACKUPS_DIR = Path("/app/templates/backups")
     
-    # Fallback: старые пути для совместимости
-    LEGACY_TEMPLATES_DIR = Path("/app/backend/utils/templates")
-    
     # Типы шаблонов
     TEMPLATE_TYPES = {
-        "sticker": "sticker_template.xlsx",  # Изменено на .xlsx
+        "sticker": "sticker_template.xlsx",  # Excel шаблон наклеек
         "passport": "passport_template.docx"
     }
     
@@ -47,9 +44,7 @@ class TemplateManager:
     
     def get_template_path(self, template_type: str) -> Optional[Path]:
         """
-        Получает путь к шаблону с приоритетом:
-        1. /app/templates (редактируемый пользователями)
-        2. /app/backend/utils/templates (legacy, только для чтения)
+        Получает путь к шаблону из /app/templates
         
         Args:
             template_type: Тип шаблона ('sticker' или 'passport')
@@ -62,37 +57,23 @@ class TemplateManager:
         
         filename = self.TEMPLATE_TYPES[template_type]
         
-        # Приоритет 1: Редактируемая директория
+        # Единственная директория для шаблонов
         template_path = self.TEMPLATES_DIR / filename
         if template_path.exists() and template_path.is_file():
             return template_path
-        
-        # Приоритет 2: Legacy директория (только для чтения)
-        legacy_path = self.LEGACY_TEMPLATES_DIR / filename
-        if legacy_path.exists() and legacy_path.is_file():
-            print(f"ℹ️ Используется legacy шаблон: {legacy_path}")
-            return legacy_path
         
         return None
     
     def get_logo_path(self) -> Optional[Path]:
         """
-        Получает путь к логотипу с приоритетом:
-        1. /app/templates/logo.png
-        2. /app/backend/utils/templates/logo.png
+        Получает путь к логотипу из /app/templates/logo.png
         
         Returns:
             Path к логотипу или None если не найден
         """
-        # Приоритет 1: Редактируемая директория
         logo_path = self.TEMPLATES_DIR / self.LOGO_FILENAME
         if logo_path.exists() and logo_path.is_file():
             return logo_path
-        
-        # Приоритет 2: Legacy директория
-        legacy_logo_path = self.LEGACY_TEMPLATES_DIR / self.LOGO_FILENAME
-        if legacy_logo_path.exists() and legacy_logo_path.is_file():
-            return legacy_logo_path
         
         return None
     

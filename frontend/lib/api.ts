@@ -197,6 +197,26 @@ export const passportsAPI = {
     return response.blob()
   },
   
+  exportStickersExcel: async (passportIds: number[]): Promise<Blob> => {
+    const token = getToken()
+    const url = `${API_BASE_URL}/v1/passports/export/stickers/excel`
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(passportIds),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
+      throw { response: { data: error, status: response.status } }
+    }
+    
+    return response.blob()
+  },
+  
   exportStickersDocx: async (passportIds: number[]): Promise<Blob> => {
     const token = getToken()
     const url = `${API_BASE_URL}/v1/passports/export/stickers/docx`

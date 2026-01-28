@@ -1011,25 +1011,18 @@ async def export_stickers_pdf(
         if not passport_ids:
             raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта наклеек")
         
-        # Получаем выбранные паспорта
+        # Получаем выбранные паспорта с загрузкой номенклатуры
         from sqlalchemy import select
-        passports_query = select(VedPassport).where(VedPassport.id.in_(passport_ids))
+        from sqlalchemy.orm import selectinload
+        passports_query = select(VedPassport).options(selectinload(VedPassport.nomenclature)).where(VedPassport.id.in_(passport_ids))
         result = await db.execute(passports_query)
         passports = result.scalars().all()
         
-        # Проверяем права доступа и загружаем связанные данные
+        # Проверяем права доступа
         accessible_passports = []
         for passport in passports:
             if passport.created_by == current_user.id or current_user.role == "admin":
-                # Загружаем связанные данные
-                await db.refresh(passport, ['nomenclature'])
-                # Убеждаемся, что номенклатура загружена
-                if not passport.nomenclature and passport.nomenclature_id:
-                    from sqlalchemy import select
-                    from backend.models import VEDNomenclature
-                    nom_query = select(VEDNomenclature).where(VEDNomenclature.id == passport.nomenclature_id)
-                    nom_result = await db.execute(nom_query)
-                    passport.nomenclature = nom_result.scalar_one_or_none()
+                # Номенклатура уже загружена через selectinload
                 accessible_passports.append(passport)
         
         if not accessible_passports:
@@ -1083,6 +1076,84 @@ async def export_stickers_pdf(
         raise HTTPException(status_code=500, detail=f"Ошибка экспорта наклеек в PDF: {str(e)}")
 
 
+@router.post("/export/stickers/excel")
+async def export_stickers_excel(
+    passport_ids: List[int],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Экспорт наклеек для выбранных паспортов в Excel из шаблона с логотипом и штрихкодами"""
+    try:
+        if not passport_ids:
+            raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта наклеек")
+        
+        # Получаем выбранные паспорта с загрузкой номенклатуры
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        passports_query = select(VedPassport).options(selectinload(VedPassport.nomenclature)).where(VedPassport.id.in_(passport_ids))
+        result = await db.execute(passports_query)
+        passports = result.scalars().all()
+        
+        # Проверяем права доступа
+        accessible_passports = []
+        for passport in passports:
+            if passport.created_by == current_user.id or current_user.role == "admin":
+                # Номенклатура уже загружена через selectinload
+                accessible_passports.append(passport)
+        
+        if not accessible_passports:
+            raise HTTPException(status_code=404, detail="Выбранные паспорта не найдены или нет доступа")
+        
+        print(f"📋 Экспорт наклеек (Excel из шаблона): {len(accessible_passports)} паспортов")
+        import sys
+        sys.stdout.flush()
+        
+        # Используем генерацию Excel из шаблона с логотипом и штрихкодами
+        from backend.utils.sticker_excel_generator import generate_stickers_excel
+        
+        excel_bytes = generate_stickers_excel(accessible_passports)
+        
+        # Генерируем имя файла с датой
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"stickers_{timestamp}.xlsx"
+        
+        # Создаем BytesIO объект для StreamingResponse
+        excel_stream = io.BytesIO(excel_bytes)
+        
+        # Убеждаемся, что filename имеет расширение .xlsx
+        if not filename.endswith('.xlsx'):
+            filename = filename.rsplit('.', 1)[0] + '.xlsx'
+        
+        # Устанавливаем правильные заголовки для Excel
+        headers = {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(excel_bytes)),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        
+        print(f"📤 Отправляем Excel файл: {filename}, размер: {len(excel_bytes)} байт")
+        import sys
+        sys.stdout.flush()
+        
+        return StreamingResponse(
+            excel_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Ошибка экспорта наклеек в Excel: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Ошибка экспорта наклеек в Excel: {str(e)}")
+
+
 @router.post("/export/stickers/docx")
 async def export_stickers_docx(
     passport_ids: List[int],
@@ -1094,25 +1165,18 @@ async def export_stickers_docx(
         if not passport_ids:
             raise HTTPException(status_code=400, detail="Не выбраны паспорта для экспорта наклеек")
         
-        # Получаем выбранные паспорта
+        # Получаем выбранные паспорта с загрузкой номенклатуры
         from sqlalchemy import select
-        passports_query = select(VedPassport).where(VedPassport.id.in_(passport_ids))
+        from sqlalchemy.orm import selectinload
+        passports_query = select(VedPassport).options(selectinload(VedPassport.nomenclature)).where(VedPassport.id.in_(passport_ids))
         result = await db.execute(passports_query)
         passports = result.scalars().all()
         
-        # Проверяем права доступа и загружаем связанные данные
+        # Проверяем права доступа
         accessible_passports = []
         for passport in passports:
             if passport.created_by == current_user.id or current_user.role == "admin":
-                # Загружаем связанные данные
-                await db.refresh(passport, ['nomenclature'])
-                # Убеждаемся, что номенклатура загружена
-                if not passport.nomenclature and passport.nomenclature_id:
-                    from sqlalchemy import select
-                    from backend.models import VEDNomenclature
-                    nom_query = select(VEDNomenclature).where(VEDNomenclature.id == passport.nomenclature_id)
-                    nom_result = await db.execute(nom_query)
-                    passport.nomenclature = nom_result.scalar_one_or_none()
+                # Номенклатура уже загружена через selectinload
                 accessible_passports.append(passport)
         
         if not accessible_passports:

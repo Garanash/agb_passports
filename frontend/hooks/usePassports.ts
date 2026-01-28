@@ -175,6 +175,15 @@ export function usePassports() {
     }
   }
 
+  const exportStickersExcel = async (passportIds: number[]) => {
+    try {
+      const response = await passportsAPI.exportStickersExcel(passportIds)
+      return response
+    } catch (err: any) {
+      throw new Error(err.response?.data?.detail || 'Ошибка экспорта наклеек')
+    }
+  }
+  
   const exportStickersDocx = async (passportIds: number[]) => {
     try {
       const response = await passportsAPI.exportStickersDocx(passportIds)
@@ -201,6 +210,7 @@ export function usePassports() {
     exportBulkPassportPdf,
     exportPassportsExcel,
     exportSelectedPassportsExcel,
+    exportStickersExcel,
     exportStickersDocx,
     refetchPassports: fetchPassports,
     refetch: fetchPassports,

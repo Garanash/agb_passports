@@ -42,8 +42,10 @@ services:
       - agb_network
     volumes:
       - ./Номенклатура алмазный инстурмент ALFA.xlsx:/app/nomenclature.xlsx
+      - ./backend:/app/backend  # Монтируем весь backend для разработки (изменения применяются сразу)
       - ./backend/utils/templates:/app/backend/utils/templates  # Legacy (read-only)
       - ./templates:/app/templates  # Редактируемые шаблоны пользователями
+      - ./logs:/app/logs
     restart: unless-stopped
 
   # Frontend
