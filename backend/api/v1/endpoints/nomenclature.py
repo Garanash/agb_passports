@@ -109,7 +109,10 @@ def update_nomenclature(
             raise HTTPException(status_code=404, detail="Номенклатура не найдена")
         
         # Обновляем поля
-        update_data = nomenclature_data.model_dump(exclude_unset=True)
+        if hasattr(nomenclature_data, 'model_dump'):
+            update_data = nomenclature_data.model_dump(exclude_unset=True)
+        else:
+            update_data = nomenclature_data.dict(exclude_unset=True)
 
         # Защита от изменения первичного ключа
         update_data.pop("id", None)

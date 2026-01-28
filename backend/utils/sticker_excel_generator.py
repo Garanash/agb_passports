@@ -729,7 +729,7 @@ def generate_stickers_excel(passports, template_path=None):
                 # Штрихкод артикула делаем чуть меньше, чтобы уверенно помещался в ячейку
                 barcode_img.height = 32
                 barcode_img.width = 160
-                _add_image_centered(ws, barcode_img, barcode_row, barcode_col)
+                _add_image_centered(ws, barcode_img, barcode_row, barcode_col, top_offset_px=10)
                 print(f"    ✅ Штрихкод номенклатуры (артикул) по центру в {get_column_letter(barcode_col)}{barcode_row}")
         except Exception as e:
             print(f"    ⚠️ Ошибка добавления штрихкода артикула: {e}")
@@ -781,7 +781,7 @@ def generate_stickers_excel(passports, template_path=None):
                 barcode_img.height = 32
                 barcode_img.width = 160
                 # Штрихкод по центру ячейки (горизонтально и вертикально)
-                _add_image_centered(ws, barcode_img, barcode_row, barcode_col)
+                _add_image_centered(ws, barcode_img, barcode_row, barcode_col, top_offset_px=10)
                 barcode_cell = f"{get_column_letter(barcode_col)}{barcode_row}"
                 print(f"    ✅ Серийный номер: текст сверху, штрихкод по центру ячейки — {barcode_cell}")
         except Exception as e:
