@@ -405,17 +405,19 @@ def generate_stickers_excel(passports, template_path=None):
     
     # Сетка наклеек: 2 по горизонтали × 4 по вертикали на лист (8 штук),
     # далее следующая "страница" такой же сеткой ниже.
-    # Ширина ОДНОЙ наклейки: целимся в ~105 мм.
-    # При 96 DPI: 1 мм ≈ 3.78 px. 3 колонки суммарно ≈ 400 px → ~105 мм.
-    # Фиксированные ширины колонок наклейки в пикселях: A=100, B=200, C=100.
-    COL_WIDTHS_PX = [100, 200, 100]
+    # Ширина ОДНОЙ наклейки: целимся в ~105 мм, но слегка уменьшаем,
+    # чтобы 2×4 наклейки гарантированно влезали на лист при печати без полей.
+    # Фиксированные ширины колонок наклейки в пикселях (≈ немного меньше 105 мм суммарно):
+    # A≈95px, B≈190px, C≈95px.
+    COL_WIDTHS_PX = [95, 190, 95]
     # Логотип: размер 1.07 см x 3.61 см (1 см ≈ 37.8 px при 96 DPI)
     LOGO_WIDTH_CM, LOGO_HEIGHT_CM = 1.07, 3.61
     CM_TO_PX = 37.7952755906  # 96 DPI
     PX_PER_MM = CM_TO_PX / 10.0
     
-    # Целевая высота наклейки: 74.3 мм
-    TARGET_HEIGHT_MM = 74.3
+    # Целевая высота наклейки: 74.3 мм, но чуть уменьшаем,
+    # чтобы 4 ряда по высоте гарантированно помещались на A4.
+    TARGET_HEIGHT_MM = 72.0
     target_height_px = TARGET_HEIGHT_MM * PX_PER_MM
     current_height_px = sum(_row_height_px(template_ws, r) for r in range(1, STICKER_ROWS + 1))
     if current_height_px > 0:
@@ -616,7 +618,7 @@ def generate_stickers_excel(passports, template_path=None):
         find_and_replace_cell(ws, row_offset, col_offset, STICKER_ROWS, STICKER_COLS,
                             'Дата изготовления:', f'Дата изготовления: «{day}» {month} {year}')
         
-        # Усиливаем границы наклейки (делаем их жирными)
+        # Усиливаем границы наклейки (делаем их жирными) и приводим шрифт ко 12 pt
         thick_side = Side(style='thick', color='000000')
         thin_side = Side(style='thin', color='000000')
         
@@ -637,6 +639,22 @@ def generate_stickers_excel(passports, template_path=None):
                     top=thick_side if is_top else thin_side,
                     bottom=thick_side if is_bottom else thin_side
                 )
+
+                # Приводим весь текст к шрифту 12 pt (кроме объединённых ячеек,
+                # у которых шрифт берётся из верхней левой ячейки объединения)
+                if not isinstance(cell, MergedCell):
+                    f = cell.font
+                    try:
+                        cell.font = Font(
+                            name=f.name if f else "Calibri",
+                            size=12,
+                            bold=f.bold if f else False,
+                            italic=f.italic if f else False,
+                            color=f.color if f else None,
+                        )
+                    except Exception:
+                        # В случае проблем с цветом/именем шрифта — просто ставим размер
+                        cell.font = Font(size=12)
         
         # Вставляем логотип ТОЛЬКО ОДИН РАЗ в объединенную ячейку A (первая колонка)
         if logo_path and os.path.exists(logo_path):
@@ -663,9 +681,10 @@ def generate_stickers_excel(passports, template_path=None):
                 
                 # Логотип: размер 1.07 см x 3.61 см, посередине ячейки
                 logo_img = OpenpyxlImage(temp_logo_path_name)
-                # Делаем логотип в 2 раза больше
-                logo_img.width = int(LOGO_WIDTH_CM * CM_TO_PX * 2)
-                logo_img.height = int(LOGO_HEIGHT_CM * CM_TO_PX * 2)
+                # Делаем логотип немного крупнее базового, но так, чтобы он не выходил за границы ячейки
+                LOGO_SCALE = 1.5  # раньше было 2.0 — уменьшили
+                logo_img.width = int(LOGO_WIDTH_CM * CM_TO_PX * LOGO_SCALE)
+                logo_img.height = int(LOGO_HEIGHT_CM * CM_TO_PX * LOGO_SCALE)
                 
                 logo_cell = f"{get_column_letter(col_offset)}{row_offset}"
                 _remove_images_in_cell(ws, row_offset, col_offset)
@@ -707,9 +726,9 @@ def generate_stickers_excel(passports, template_path=None):
                 if not isinstance(_cell, MergedCell):
                     _cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=getattr(_cell.alignment, 'wrap_text', False) if _cell.alignment else False)
                 barcode_img = OpenpyxlImage(stock_code_barcode_path)
-                # Под ширину колонки B=200px: делаем штрихкод крупнее и визуально ровнее
-                barcode_img.height = 40
-                barcode_img.width = 180
+                # Штрихкод артикула делаем чуть меньше, чтобы уверенно помещался в ячейку
+                barcode_img.height = 32
+                barcode_img.width = 160
                 _add_image_centered(ws, barcode_img, barcode_row, barcode_col)
                 print(f"    ✅ Штрихкод номенклатуры (артикул) по центру в {get_column_letter(barcode_col)}{barcode_row}")
         except Exception as e:
@@ -758,9 +777,10 @@ def generate_stickers_excel(passports, template_path=None):
                 # Выравнивание ячейки не трогаем — текст «Серийный номер: XXX» уже по верху (row_7),
                 # штрихкод будет добавлен по центру ячейки (как у первой наклейки)
                 barcode_img = OpenpyxlImage(serial_number_barcode_path)
-                barcode_img.height = 40
-                barcode_img.width = 180
-                # Штрихкод по центру ячейки (горизонтально и вертикально) — аналогично первой наклейке
+                # Штрихкод серийного номера также немного уменьшаем
+                barcode_img.height = 32
+                barcode_img.width = 160
+                # Штрихкод по центру ячейки (горизонтально и вертикально)
                 _add_image_centered(ws, barcode_img, barcode_row, barcode_col)
                 barcode_cell = f"{get_column_letter(barcode_col)}{barcode_row}"
                 print(f"    ✅ Серийный номер: текст сверху, штрихкод по центру ячейки — {barcode_cell}")
