@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNomenclature } from '../hooks/useNomenclature'
 import { usePassports } from '../hooks/usePassports'
@@ -22,7 +22,9 @@ import {
   CubeIcon,
   PencilIcon,
   DocumentArrowUpIcon,
-  RectangleStackIcon
+  RectangleStackIcon,
+  ChevronDownIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline'
 import toast from 'react-hot-toast'
 import { nomenclatureAPI } from '../lib/api'
@@ -49,7 +51,7 @@ interface OrderData {
 
 export default function MainApp() {
   const { nomenclature, isLoading: nomenclatureLoading, error: nomenclatureError } = useNomenclature()
-  const { passports, refetchPassports, exportSelectedPassportsExcel, exportStickersExcel, currentPage, totalPages, totalCount, isLoadingMore, loadMore } = usePassports()
+  const { passports, refetchPassports, exportSelectedPassportsExcel, exportStickersExcel, currentPage, totalPages, totalCount, isLoadingMore, loadMore, archiveOrders, passportsByOrder, isLoadingArchiveOrders, loadingOrderNumbers, fetchArchiveOrders, fetchPassportsByOrder } = usePassports()
   const { user, logout } = useAuth()
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('create')
@@ -69,6 +71,8 @@ export default function MainApp() {
   const [showArchived, setShowArchived] = useState(false)
   const [stickersSearchTerm, setStickersSearchTerm] = useState('')
   const [selectedStickerIds, setSelectedStickerIds] = useState<number[]>([])
+  const [expandedArchiveOrders, setExpandedArchiveOrders] = useState<Set<string>>(new Set())
+  const [expandedStickerOrders, setExpandedStickerOrders] = useState<Set<string>>(new Set())
   const [nomenclatureSearchTerm, setNomenclatureSearchTerm] = useState('')
   const [editingNomenclature, setEditingNomenclature] = useState<any>(null)
   const [showEditNomenclatureModal, setShowEditNomenclatureModal] = useState(false)
@@ -170,6 +174,99 @@ export default function MainApp() {
       passport.nomenclature?.article?.toLowerCase().includes(searchLower)
     )
   })
+
+  // Загрузка списка заказов при открытии вкладок «Архив паспортов» или «Архив наклеек»
+  useEffect(() => {
+    if (activeTab === 'archive' || activeTab === 'stickers') {
+      fetchArchiveOrders()
+    }
+  }, [activeTab])
+
+  // Фильтрация заказов архива по поиску (по номеру заказа)
+  const filteredArchiveOrders = useMemo(() => {
+    if (!archiveSearchTerm.trim()) return archiveOrders
+    const term = archiveSearchTerm.toLowerCase()
+    return archiveOrders.filter(o => (o.order_number || '').toLowerCase().includes(term))
+  }, [archiveOrders, archiveSearchTerm])
+
+  // Видимые паспорта в архиве: только из раскрытых заказов, с учётом поиска
+  const visibleArchivePassports = useMemo(() => {
+    const list: typeof passports = []
+    const term = (archiveSearchTerm || '').toLowerCase()
+    expandedArchiveOrders.forEach(orderKey => {
+      const group = passportsByOrder[orderKey] || []
+      if (!term) {
+        list.push(...group)
+      } else {
+        list.push(...group.filter(p =>
+          p.passport_number?.toLowerCase().includes(term) ||
+          p.order_number?.toLowerCase().includes(term) ||
+          p.nomenclature?.name?.toLowerCase().includes(term) ||
+          p.nomenclature?.code_1c?.toLowerCase().includes(term) ||
+          p.nomenclature?.article?.toLowerCase().includes(term)
+        ))
+      }
+    })
+    return list
+  }, [expandedArchiveOrders, passportsByOrder, archiveSearchTerm])
+
+  // Фильтрация заказов для наклеек по поиску
+  const filteredStickerOrders = useMemo(() => {
+    if (!stickersSearchTerm.trim()) return archiveOrders
+    const term = stickersSearchTerm.toLowerCase()
+    return archiveOrders.filter(o => (o.order_number || '').toLowerCase().includes(term))
+  }, [archiveOrders, stickersSearchTerm])
+
+  // Видимые паспорта в архиве наклеек
+  const visibleStickerPassports = useMemo(() => {
+    const list: typeof passports = []
+    const term = (stickersSearchTerm || '').toLowerCase()
+    expandedStickerOrders.forEach(orderKey => {
+      const group = passportsByOrder[orderKey] || []
+      if (!term) {
+        list.push(...group)
+      } else {
+        list.push(...group.filter(p =>
+          p.passport_number?.toLowerCase().includes(term) ||
+          p.order_number?.toLowerCase().includes(term) ||
+          p.nomenclature?.name?.toLowerCase().includes(term) ||
+          p.nomenclature?.code_1c?.toLowerCase().includes(term) ||
+          p.nomenclature?.article?.toLowerCase().includes(term)
+        ))
+      }
+    })
+    return list
+  }, [expandedStickerOrders, passportsByOrder, stickersSearchTerm])
+
+  const toggleArchiveOrder = (orderKey: string) => {
+    setExpandedArchiveOrders(prev => {
+      const next = new Set(prev)
+      if (next.has(orderKey)) {
+        next.delete(orderKey)
+      } else {
+        next.add(orderKey)
+        if (!passportsByOrder[orderKey] && !loadingOrderNumbers.has(orderKey)) {
+          fetchPassportsByOrder(orderKey)
+        }
+      }
+      return next
+    })
+  }
+
+  const toggleStickerOrder = (orderKey: string) => {
+    setExpandedStickerOrders(prev => {
+      const next = new Set(prev)
+      if (next.has(orderKey)) {
+        next.delete(orderKey)
+      } else {
+        next.add(orderKey)
+        if (!passportsByOrder[orderKey] && !loadingOrderNumbers.has(orderKey)) {
+          fetchPassportsByOrder(orderKey)
+        }
+      }
+      return next
+    })
+  }
 
   // Обновление выбранной номенклатуры при изменении ID
   useEffect(() => {
@@ -403,19 +500,16 @@ export default function MainApp() {
 
   // Функции для работы с выбором паспортов
   const togglePassportSelection = (passportId: number) => {
-    console.log('togglePassportSelection called with passportId:', passportId)
     setSelectedPassportIds(prev => {
       const newSelection = prev.includes(passportId) 
         ? prev.filter(id => id !== passportId)
         : [...prev, passportId]
-      console.log('New selection:', newSelection)
       return newSelection
     })
   }
 
   const selectAllPassports = () => {
-    console.log('selectAllPassports called, filteredPassports:', filteredPassports.length)
-    setSelectedPassportIds(filteredPassports.map(p => p.id))
+    setSelectedPassportIds(visibleArchivePassports.map(p => p.id))
   }
 
   const deselectAllPassports = () => {
@@ -423,7 +517,7 @@ export default function MainApp() {
   }
 
   const selectAllStickers = () => {
-    setSelectedStickerIds(filteredStickers.map(p => p.id))
+    setSelectedStickerIds(visibleStickerPassports.map(p => p.id))
   }
 
   const deselectAllStickers = () => {
@@ -491,6 +585,25 @@ export default function MainApp() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
       toast.success(`Экспортировано ${selectedPassportIds.length} паспортов в Excel`)
+    } catch (error: any) {
+      console.error('Ошибка при экспорте Excel:', error)
+      toast.error('Ошибка экспорта паспортов в Excel')
+    }
+  }
+
+  const exportVisibleToExcel = async (ids: number[]) => {
+    if (ids.length === 0) return
+    try {
+      const blob = await exportSelectedPassportsExcel(ids)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ved_passports_visible_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      toast.success(`Экспортировано ${ids.length} паспортов в Excel`)
     } catch (error: any) {
       console.error('Ошибка при экспорте Excel:', error)
       toast.error('Ошибка экспорта паспортов в Excel')
@@ -1188,11 +1301,18 @@ export default function MainApp() {
                    <div className="max-w-6xl mx-auto">
                      <div className="mb-6">
                        <h1 className="text-2xl font-bold text-gray-900">Архив паспортов</h1>
-                       <p className="text-gray-600 mt-1">Просмотр всех созданных паспортов</p>
+                       <p className="text-gray-600 mt-1">Просмотр всех созданных паспортов. Нажмите на заказ, чтобы загрузить паспорта.</p>
                      </div>
 
                      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                      {filteredPassports.length === 0 ? (
+                      {isLoadingArchiveOrders ? (
+                        <div className="flex justify-center py-12">
+                          <svg className="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                        </div>
+                      ) : filteredArchiveOrders.length === 0 ? (
                         archiveSearchTerm ? (
                           <div className="text-center py-12">
                             <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -1217,22 +1337,20 @@ export default function MainApp() {
                            <div className="flex items-center justify-between">
                              <div>
                                <h3 className="text-lg font-semibold text-gray-900">
-                                 {archiveSearchTerm ? `Найдено паспортов: ${filteredPassports.length}` : `Всего паспортов: ${passports.length}`}
+                                 Заказов: {filteredArchiveOrders.length}
+                                 {archiveSearchTerm && ` (поиск: "${archiveSearchTerm}")`}
                                </h3>
-                               {archiveSearchTerm && (
-                                 <p className="text-sm text-gray-600 mt-1">
-                                   Поиск: "{archiveSearchTerm}"
-                                 </p>
-                               )}
+                               <p className="text-sm text-gray-600 mt-1">
+                                 Раскройте заказ, чтобы увидеть паспорта и выгрузить их
+                               </p>
                              </div>
                              <div className="flex flex-wrap gap-2">
-                               {/* Кнопки выбора */}
                                <div className="flex space-x-2">
                                  <button
                                    onClick={selectAllPassports}
                                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200"
                                  >
-                                   Выбрать все
+                                   Выбрать все (видимые)
                                  </button>
                                  <button
                                    onClick={deselectAllPassports}
@@ -1241,8 +1359,6 @@ export default function MainApp() {
                                    Снять выбор
                                  </button>
                                </div>
-                               
-                               {/* Кнопки экспорта выбранных */}
                                <div className="flex space-x-2">
                                  <button
                                    onClick={exportSelectedToPdf}
@@ -1269,55 +1385,36 @@ export default function MainApp() {
                                    Экспорт наклеек ({selectedPassportIds.length})
                                  </button>
                                </div>
-                               
-                               {/* Кнопки экспорта всех */}
                                <div className="flex space-x-2">
                                  <button
-                                   onClick={() => {
-                                     const allIds = filteredPassports.map(p => p.id)
-                                     exportToPdf(allIds)
-                                   }}
-                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                                   onClick={() => exportToPdf(visibleArchivePassports.map(p => p.id))}
+                                   disabled={visibleArchivePassports.length === 0}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                    <DocumentArrowDownIcon className="h-4 w-4 mr-2" />
-                                   Экспорт всех в PDF
+                                   Экспорт видимых в PDF
                                  </button>
                                  <button
-                                   onClick={handleExportExcel}
-                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-md hover:bg-green-700"
+                                   onClick={() => exportVisibleToExcel(visibleArchivePassports.map(p => p.id))}
+                                   disabled={visibleArchivePassports.length === 0}
+                                   className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                  >
                                    <TableCellsIcon className="h-4 w-4 mr-2" />
-                                   Экспорт всех в Excel
+                                   Экспорт видимых в Excel
                                  </button>
                                </div>
                              </div>
                            </div>
 
-                           {/* Строка поиска и фильтры */}
-                           <div className="space-y-4">
-                             <div className="relative">
-                               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                               <input
-                                 type="text"
-                                 placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
-                                 value={archiveSearchTerm}
-                                 onChange={(e) => setArchiveSearchTerm(e.target.value)}
-                                 className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                               />
-                             </div>
-                             
-                             {/* Фильтры */}
-                             <div className="flex items-center space-x-4">
-                               <label className="flex items-center">
-                                 <input
-                                   type="checkbox"
-                                   checked={showArchived}
-                                   onChange={(e) => setShowArchived(e.target.checked)}
-                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                 />
-                                 <span className="ml-2 text-sm text-gray-700">Показывать архивные</span>
-                               </label>
-                             </div>
+                           <div className="relative">
+                             <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                             <input
+                               type="text"
+                               placeholder="Поиск по номеру заказа..."
+                               value={archiveSearchTerm}
+                               onChange={(e) => setArchiveSearchTerm(e.target.value)}
+                               className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                             />
                            </div>
                            
                            <div className="overflow-x-auto">
@@ -1327,7 +1424,8 @@ export default function MainApp() {
                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
                                      <input
                                        type="checkbox"
-                                       checked={selectedPassportIds.length === filteredPassports.length && filteredPassports.length > 0}
+                                       checked={visibleArchivePassports.length > 0 && visibleArchivePassports.every(p => selectedPassportIds.includes(p.id))}
+                                       ref={input => { if (input) (input as HTMLInputElement).indeterminate = visibleArchivePassports.length > 0 && visibleArchivePassports.some(p => selectedPassportIds.includes(p.id)) && !visibleArchivePassports.every(p => selectedPassportIds.includes(p.id)) }}
                                        onChange={(e) => e.target.checked ? selectAllPassports() : deselectAllPassports()}
                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                      />
@@ -1353,82 +1451,122 @@ export default function MainApp() {
                                  </tr>
                                </thead>
                                <tbody className="bg-white divide-y divide-gray-200">
-                                 {filteredPassports.map((passport) => (
-                                   <tr key={passport.id} className="hover:bg-gray-50">
-                                     <td className="px-6 py-4 whitespace-nowrap w-12">
-                                       <input
-                                         type="checkbox"
-                                         checked={selectedPassportIds.includes(passport.id)}
-                                         onChange={() => togglePassportSelection(passport.id)}
-                                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                       />
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                       {passport.passport_number}
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                       {passport.nomenclature?.name || 'Не указано'}
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                       {passport.order_number}
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap">
-                                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                         passport.status === 'active' 
-                                           ? 'bg-green-100 text-green-800' 
-                                           : 'bg-gray-100 text-gray-800'
-                                       }`}>
-                                         {passport.status === 'active' ? 'Активный' : 'Архивный'}
-                                       </span>
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                       {new Date(passport.created_at).toLocaleDateString('ru-RU')}
-                                     </td>
-                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                       <button
-                                         onClick={() => exportToPdf([passport.id])}
-                                         className="text-blue-600 hover:text-blue-900 mr-3"
+                                 {filteredArchiveOrders.map((order) => {
+                                   const orderKey = order.order_number
+                                   const isExpanded = expandedArchiveOrders.has(orderKey)
+                                   const isLoadingOrder = loadingOrderNumbers.has(orderKey)
+                                   const rawGroup = passportsByOrder[orderKey] || []
+                                   const term = (archiveSearchTerm || '').toLowerCase()
+                                   const groupPassports = !term ? rawGroup : rawGroup.filter(p =>
+                                     p.passport_number?.toLowerCase().includes(term) ||
+                                     p.order_number?.toLowerCase().includes(term) ||
+                                     p.nomenclature?.name?.toLowerCase().includes(term) ||
+                                     p.nomenclature?.code_1c?.toLowerCase().includes(term) ||
+                                     p.nomenclature?.article?.toLowerCase().includes(term)
+                                   )
+                                   const allInGroupSelected = groupPassports.length > 0 && groupPassports.every(p => selectedPassportIds.includes(p.id))
+                                   const someInGroupSelected = groupPassports.some(p => selectedPassportIds.includes(p.id))
+                                   return (
+                                     <React.Fragment key={orderKey}>
+                                       <tr
+                                         className="bg-gray-50 hover:bg-gray-100 border-l-4 border-blue-200 cursor-pointer"
+                                         onClick={() => toggleArchiveOrder(orderKey)}
                                        >
-                                         PDF
-                                       </button>
-                                       {passport.status === 'active' && (
-                                         <button
-                                           onClick={() => archivePassport(passport.id)}
-                                           className="text-orange-600 hover:text-orange-900"
-                                         >
-                                           Архивировать
-                                         </button>
+                                         <td className="px-6 py-3 whitespace-nowrap w-12" onClick={e => e.stopPropagation()}>
+                                           <input
+                                             type="checkbox"
+                                             checked={allInGroupSelected}
+                                             ref={input => { if (input) (input as HTMLInputElement).indeterminate = someInGroupSelected && !allInGroupSelected }}
+                                             onChange={(e) => {
+                                               e.stopPropagation()
+                                               if (e.target.checked) {
+                                                 setSelectedPassportIds(prev => Array.from(new Set([...prev, ...groupPassports.map(p => p.id)])))
+                                               } else {
+                                                 setSelectedPassportIds(prev => prev.filter(id => !groupPassports.some(p => p.id === id)))
+                                               }
+                                             }}
+                                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                           />
+                                         </td>
+                                         <td className="px-6 py-3 whitespace-nowrap" colSpan={6}>
+                                           <div className="flex items-center gap-2">
+                                             {isExpanded ? (
+                                               <ChevronDownIcon className="h-5 w-5 text-gray-500 shrink-0" />
+                                             ) : (
+                                               <ChevronRightIcon className="h-5 w-5 text-gray-500 shrink-0" />
+                                             )}
+                                             <span className="font-semibold text-gray-900">Заказ: {orderKey}</span>
+                                             <span className="text-sm text-gray-500">({order.count} паспортов)</span>
+                                           </div>
+                                         </td>
+                                       </tr>
+                                       {isExpanded && (
+                                         isLoadingOrder ? (
+                                           <tr>
+                                             <td colSpan={7} className="px-6 py-4 pl-14 text-sm text-gray-500">
+                                               <span className="inline-flex items-center gap-2">
+                                                 <svg className="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                 Загрузка паспортов...
+                                               </span>
+                                             </td>
+                                           </tr>
+                                         ) : (
+                                           groupPassports.map((passport) => (
+                                             <tr key={passport.id} className="hover:bg-gray-50 bg-white">
+                                               <td className="px-6 py-4 whitespace-nowrap w-12 pl-10">
+                                                 <input
+                                                   type="checkbox"
+                                                   checked={selectedPassportIds.includes(passport.id)}
+                                                   onChange={() => togglePassportSelection(passport.id)}
+                                                   onClick={e => e.stopPropagation()}
+                                                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                 />
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 pl-10">
+                                                 {passport.passport_number}
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                 {passport.nomenclature?.name || 'Не указано'}
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                 {passport.order_number}
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap">
+                                                 <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                   passport.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                 }`}>
+                                                   {passport.status === 'active' ? 'Активный' : 'Архивный'}
+                                                 </span>
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                 {new Date(passport.created_at).toLocaleDateString('ru-RU')}
+                                               </td>
+                                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                 <button
+                                                   onClick={(e) => { e.stopPropagation(); exportToPdf([passport.id]) }}
+                                                   className="text-blue-600 hover:text-blue-900 mr-3"
+                                                 >
+                                                   PDF
+                                                 </button>
+                                                 {passport.status === 'active' && (
+                                                   <button
+                                                     onClick={(e) => { e.stopPropagation(); archivePassport(passport.id).then(() => fetchPassportsByOrder(orderKey)) }}
+                                                     className="text-orange-600 hover:text-orange-900"
+                                                   >
+                                                     Архивировать
+                                                   </button>
+                                                 )}
+                                               </td>
+                                             </tr>
+                                           ))
+                                         )
                                        )}
-                                     </td>
-                                   </tr>
-                                 ))}
+                                     </React.Fragment>
+                                   )
+                                 })}
                                </tbody>
                              </table>
                            </div>
-                           {currentPage < totalPages && (
-                             <div className="flex justify-center mt-6">
-                               <button
-                                 onClick={loadMore}
-                                 disabled={isLoadingMore}
-                                 className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                               >
-                                 {isLoadingMore ? (
-                                   <>
-                                     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                     </svg>
-                                     Загрузка...
-                                   </>
-                                 ) : (
-                                   <>
-                                     <PlusIcon className="h-5 w-5 mr-2" />
-                                     Загрузить ещё (показано {filteredPassports.length} из {totalCount})
-                                   </>
-                                 )}
-                               </button>
-                             </div>
-                           )}
                          </div>
                        )}
                      </div>
@@ -1439,11 +1577,18 @@ export default function MainApp() {
             <div className="max-w-6xl mx-auto">
               <div className="mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Архив наклеек</h1>
-                <p className="text-gray-600 mt-1">Просмотр и экспорт наклеек для паспортов</p>
+                <p className="text-gray-600 mt-1">Просмотр и экспорт наклеек. Нажмите на заказ, чтобы загрузить паспорта и выгрузить наклейки.</p>
               </div>
 
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                {filteredStickers.length === 0 ? (
+                {isLoadingArchiveOrders ? (
+                  <div className="flex justify-center py-12">
+                    <svg className="animate-spin h-10 w-10 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                ) : filteredStickerOrders.length === 0 ? (
                   stickersSearchTerm ? (
                     <div className="text-center py-12">
                       <MagnifyingGlassIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -1468,13 +1613,12 @@ export default function MainApp() {
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900">
-                          {stickersSearchTerm ? `Найдено паспортов: ${filteredStickers.length}` : `Всего паспортов: ${passports.length}`}
+                          Заказов: {filteredStickerOrders.length}
+                          {stickersSearchTerm && ` (поиск: "${stickersSearchTerm}")`}
                         </h3>
-                        {stickersSearchTerm && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            Поиск: "{stickersSearchTerm}"
-                          </p>
-                        )}
+                        <p className="text-sm text-gray-600 mt-1">
+                          Раскройте заказ, чтобы увидеть паспорта и выгрузить наклейки
+                        </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <div className="flex space-x-2">
@@ -1482,7 +1626,7 @@ export default function MainApp() {
                             onClick={selectAllStickers}
                             className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200"
                           >
-                            Выбрать все
+                            Выбрать все (видимые)
                           </button>
                           <button
                             onClick={deselectAllStickers}
@@ -1501,37 +1645,30 @@ export default function MainApp() {
                         </button>
                         <button
                           onClick={() => {
-                            const allIds = filteredStickers.map(p => p.id)
-                            exportStickersExcel(allIds).then(async (file) => {
-                              // Просто скачиваем файл без проверок
+                            const ids = visibleStickerPassports.map(p => p.id)
+                            if (ids.length === 0) return
+                            exportStickersExcel(ids).then(async (file) => {
                               const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-                              const fileName = `stickers_all_${timestamp}.xlsx`
-                              
-                              const blob = file instanceof Blob ? file : new Blob([file], { 
-                                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                              })
+                              const fileName = `stickers_visible_${timestamp}.xlsx`
+                              const blob = file instanceof Blob ? file : new Blob([file], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
                               const url = window.URL.createObjectURL(blob)
                               const link = document.createElement('a')
                               link.href = url
                               link.download = fileName
                               document.body.appendChild(link)
                               link.click()
-                              
-                              setTimeout(() => {
-                                document.body.removeChild(link)
-                                window.URL.revokeObjectURL(url)
-                              }, 100)
-                              
-                              toast.success(`Экспортировано ${allIds.length} наклеек`)
+                              setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url) }, 100)
+                              toast.success(`Экспортировано ${ids.length} наклеек`)
                             }).catch(error => {
                               console.error('Ошибка при экспорте наклеек:', error)
                               toast.error('Ошибка экспорта наклеек')
                             })
                           }}
-                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 border border-purple-600 rounded-md hover:bg-purple-700"
+                          disabled={visibleStickerPassports.length === 0}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-purple-600 border border-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <DocumentTextIcon className="h-4 w-4 mr-2" />
-                          Экспорт всех наклеек
+                          Экспорт видимых наклеек
                         </button>
                       </div>
                     </div>
@@ -1540,10 +1677,10 @@ export default function MainApp() {
                       <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="text"
-                        placeholder="Поиск по номеру паспорта, заказу или номенклатуре..."
+                        placeholder="Поиск по номеру заказа..."
                         value={stickersSearchTerm}
                         onChange={(e) => setStickersSearchTerm(e.target.value)}
-                        className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="block w-full px-3 py-2 pl-10 text-sm border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                       />
                     </div>
 
@@ -1554,7 +1691,8 @@ export default function MainApp() {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
                               <input
                                 type="checkbox"
-                                checked={selectedStickerIds.length === filteredStickers.length && filteredStickers.length > 0}
+                                checked={visibleStickerPassports.length > 0 && visibleStickerPassports.every(p => selectedStickerIds.includes(p.id))}
+                                ref={input => { if (input) (input as HTMLInputElement).indeterminate = visibleStickerPassports.length > 0 && visibleStickerPassports.some(p => selectedStickerIds.includes(p.id)) && !visibleStickerPassports.every(p => selectedStickerIds.includes(p.id)) }}
                                 onChange={(e) => e.target.checked ? selectAllStickers() : deselectAllStickers()}
                                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                               />
@@ -1577,71 +1715,128 @@ export default function MainApp() {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredStickers.map((passport) => (
-                            <tr key={passport.id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <input
-                                  type="checkbox"
-                                  checked={selectedStickerIds.includes(passport.id)}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setSelectedStickerIds(prev => [...prev, passport.id])
-                                    } else {
-                                      setSelectedStickerIds(prev => prev.filter(id => id !== passport.id))
-                                    }
-                                  }}
-                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                {passport.passport_number}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {passport.nomenclature?.name || 'Не указано'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {passport.order_number}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {new Date(passport.created_at).toLocaleDateString('ru-RU')}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <button
-                                  onClick={() => {
-                                    exportStickersExcel([passport.id]).then(async (file) => {
-                                      // ВАЖНО: используем .xlsx расширение для Excel файлов
-                                      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-                                      const fileName = `sticker_${passport.passport_number}_${timestamp}.xlsx`
-                                      
-                                      // Просто скачиваем файл без проверок
-                                      const blob = file instanceof Blob ? file : new Blob([file], { 
-                                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-                                      })
-                                      const url = window.URL.createObjectURL(blob)
-                                      const link = document.createElement('a')
-                                      link.href = url
-                                      link.download = fileName
-                                      document.body.appendChild(link)
-                                      link.click()
-                                      
-                                      setTimeout(() => {
-                                        document.body.removeChild(link)
-                                        window.URL.revokeObjectURL(url)
-                                      }, 100)
-                                      
-                                      toast.success('Наклейка экспортирована')
-                                    }).catch(error => {
-                                      console.error('Ошибка при экспорте наклейки:', error)
-                                      toast.error('Ошибка экспорта наклейки')
-                                    })
-                                  }}
-                                  className="text-purple-600 hover:text-purple-900"
+                          {filteredStickerOrders.map((order) => {
+                            const orderKey = order.order_number
+                            const isExpanded = expandedStickerOrders.has(orderKey)
+                            const isLoadingOrder = loadingOrderNumbers.has(orderKey)
+                            const rawGroup = passportsByOrder[orderKey] || []
+                            const term = (stickersSearchTerm || '').toLowerCase()
+                            const groupPassports = !term ? rawGroup : rawGroup.filter(p =>
+                              p.passport_number?.toLowerCase().includes(term) ||
+                              p.order_number?.toLowerCase().includes(term) ||
+                              p.nomenclature?.name?.toLowerCase().includes(term) ||
+                              p.nomenclature?.code_1c?.toLowerCase().includes(term) ||
+                              p.nomenclature?.article?.toLowerCase().includes(term)
+                            )
+                            const allInGroupSelected = groupPassports.length > 0 && groupPassports.every(p => selectedStickerIds.includes(p.id))
+                            const someInGroupSelected = groupPassports.some(p => selectedStickerIds.includes(p.id))
+                            return (
+                              <React.Fragment key={orderKey}>
+                                <tr
+                                  className="bg-gray-50 hover:bg-gray-100 border-l-4 border-purple-200 cursor-pointer"
+                                  onClick={() => toggleStickerOrder(orderKey)}
                                 >
-                                  Экспорт наклейки
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                                  <td className="px-6 py-3 whitespace-nowrap w-12" onClick={e => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={allInGroupSelected}
+                                      ref={input => { if (input) (input as HTMLInputElement).indeterminate = someInGroupSelected && !allInGroupSelected }}
+                                      onChange={(e) => {
+                                        e.stopPropagation()
+                                        if (e.target.checked) {
+                                          setSelectedStickerIds(prev => Array.from(new Set([...prev, ...groupPassports.map(p => p.id)])))
+                                        } else {
+                                          setSelectedStickerIds(prev => prev.filter(id => !groupPassports.some(p => p.id === id)))
+                                        }
+                                      }}
+                                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                  </td>
+                                  <td className="px-6 py-3 whitespace-nowrap" colSpan={5}>
+                                    <div className="flex items-center gap-2">
+                                      {isExpanded ? (
+                                        <ChevronDownIcon className="h-5 w-5 text-gray-500 shrink-0" />
+                                      ) : (
+                                        <ChevronRightIcon className="h-5 w-5 text-gray-500 shrink-0" />
+                                      )}
+                                      <span className="font-semibold text-gray-900">Заказ: {orderKey}</span>
+                                      <span className="text-sm text-gray-500">({order.count} наклеек)</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {isExpanded && (
+                                  isLoadingOrder ? (
+                                    <tr>
+                                      <td colSpan={6} className="px-6 py-4 pl-14 text-sm text-gray-500">
+                                        <span className="inline-flex items-center gap-2">
+                                          <svg className="animate-spin h-4 w-4 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                          Загрузка паспортов...
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    groupPassports.map((passport) => (
+                                      <tr key={passport.id} className="hover:bg-gray-50 bg-white">
+                                        <td className="px-6 py-4 whitespace-nowrap pl-10">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedStickerIds.includes(passport.id)}
+                                            onChange={(e) => {
+                                              if (e.target.checked) {
+                                                setSelectedStickerIds(prev => [...prev, passport.id])
+                                              } else {
+                                                setSelectedStickerIds(prev => prev.filter(id => id !== passport.id))
+                                              }
+                                            }}
+                                            onClick={e => e.stopPropagation()}
+                                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                          />
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 pl-10">
+                                          {passport.passport_number}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                          {passport.nomenclature?.name || 'Не указано'}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                          {passport.order_number}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                          {new Date(passport.created_at).toLocaleDateString('ru-RU')}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              exportStickersExcel([passport.id]).then(async (file) => {
+                                                const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+                                                const fileName = `sticker_${passport.passport_number}_${timestamp}.xlsx`
+                                                const blob = file instanceof Blob ? file : new Blob([file], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+                                                const url = window.URL.createObjectURL(blob)
+                                                const link = document.createElement('a')
+                                                link.href = url
+                                                link.download = fileName
+                                                document.body.appendChild(link)
+                                                link.click()
+                                                setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url) }, 100)
+                                                toast.success('Наклейка экспортирована')
+                                              }).catch(error => {
+                                                console.error('Ошибка при экспорте наклейки:', error)
+                                                toast.error('Ошибка экспорта наклейки')
+                                              })
+                                            }}
+                                            className="text-purple-600 hover:text-purple-900"
+                                          >
+                                            Экспорт наклейки
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )
+                                )}
+                              </React.Fragment>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>

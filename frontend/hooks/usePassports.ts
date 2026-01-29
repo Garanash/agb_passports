@@ -24,6 +24,11 @@ export interface Passport {
   }
 }
 
+export interface OrderSummary {
+  order_number: string
+  count: number
+}
+
 export function usePassports() {
   const [passports, setPassports] = useState<Passport[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -33,6 +38,12 @@ export function usePassports() {
   const [totalCount, setTotalCount] = useState(0)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const pageSize = 20
+
+  // Ленивая загрузка архива: только заказы, паспорта по заказу по требованию
+  const [archiveOrders, setArchiveOrders] = useState<OrderSummary[]>([])
+  const [passportsByOrder, setPassportsByOrder] = useState<Record<string, Passport[]>>({})
+  const [isLoadingArchiveOrders, setIsLoadingArchiveOrders] = useState(false)
+  const [loadingOrderNumbers, setLoadingOrderNumbers] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchPassports(1)
@@ -98,6 +109,56 @@ export function usePassports() {
     if (currentPage < totalPages && !isLoadingMore) {
       const nextPage = currentPage + 1
       await fetchPassports(nextPage, true)
+    }
+  }
+
+  const fetchArchiveOrders = async () => {
+    try {
+      setIsLoadingArchiveOrders(true)
+      const data = await passportsAPI.getOrdersSummary()
+      const sorted = (data.orders || []).sort((a: OrderSummary, b: OrderSummary) =>
+        a.order_number === 'Без заказа' ? 1 : b.order_number === 'Без заказа' ? -1 : a.order_number.localeCompare(b.order_number)
+      )
+      setArchiveOrders(sorted)
+    } catch (err: any) {
+      if (err.response?.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+        return
+      }
+      console.error('Error fetching archive orders:', err)
+    } finally {
+      setIsLoadingArchiveOrders(false)
+    }
+  }
+
+  const fetchPassportsByOrder = async (orderNumber: string) => {
+    if (loadingOrderNumbers.has(orderNumber)) return
+    try {
+      setLoadingOrderNumbers(prev => {
+        const next = new Set(prev)
+        next.add(orderNumber)
+        return next
+      })
+      const param = orderNumber === 'Без заказа' ? '' : orderNumber
+      const data = await passportsAPI.getPublicPassports(1, 2000, param)
+      const list = (data.passports || []) as Passport[]
+      setPassportsByOrder(prev => ({ ...prev, [orderNumber]: list }))
+    } catch (err: any) {
+      if (err.response?.status === 401 && typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+        return
+      }
+      console.error('Error fetching passports by order:', err)
+    } finally {
+      setLoadingOrderNumbers(prev => {
+        const next = new Set(prev)
+        next.delete(orderNumber)
+        return next
+      })
     }
   }
 
@@ -202,6 +263,12 @@ export function usePassports() {
     totalCount,
     isLoadingMore,
     loadMore,
+    archiveOrders,
+    passportsByOrder,
+    isLoadingArchiveOrders,
+    loadingOrderNumbers,
+    fetchArchiveOrders,
+    fetchPassportsByOrder,
     createPassport,
     createBulkPassports,
     archivePassport,

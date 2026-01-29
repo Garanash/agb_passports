@@ -7,6 +7,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select
 import datetime
 
@@ -104,6 +105,42 @@ class VedPassport(Base):
             passport_number = f"AGB {matrix} {serial_number} {current_year_suffix}"
 
         print(f"DEBUG: Generated passport number: {passport_number} (serial: {counter.current_value}, year: {current_year}, type: {product_type})")
+        return passport_number
+
+    @staticmethod
+    def generate_passport_number_sync(db: Session, matrix: str, drilling_depth: str = None, article: str = None, product_type: str = None) -> str:
+        """Синхронная генерация номера паспорта (для использования с Session/get_db)."""
+        current_year = datetime.datetime.now().year
+        current_year_suffix = str(current_year)[-2:]
+        counter_name = f"ved_passport_{current_year}"
+
+        counter = db.query(PassportCounter).filter(PassportCounter.counter_name == counter_name).first()
+
+        if not counter:
+            counter = PassportCounter(
+                counter_name=counter_name,
+                current_value=0,
+                prefix="",
+                suffix=current_year_suffix
+            )
+            db.add(counter)
+            db.flush()
+
+        counter.current_value += 1
+        db.flush()
+
+        serial_number = str(counter.current_value).zfill(6)
+
+        if product_type and product_type.lower() in ["коронка", "корона"]:
+            if drilling_depth:
+                passport_number = f"AGB {drilling_depth} {matrix} {serial_number} {current_year_suffix}"
+            else:
+                passport_number = f"AGB {matrix} {serial_number} {current_year_suffix}"
+        elif product_type in ["расширитель", "башмак"]:
+            passport_number = f"AGB {matrix} {serial_number} {current_year_suffix}"
+        else:
+            passport_number = f"AGB {matrix} {serial_number} {current_year_suffix}"
+
         return passport_number
 
 class PassportCounter(Base):

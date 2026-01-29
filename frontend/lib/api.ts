@@ -87,6 +87,22 @@ export const passportsAPI = {
     const response = await fetchAPI(`/v1/passports/?page=${page}&page_size=${pageSize}`)
     return response.json()
   },
+
+  /** Список заказов с количеством паспортов (для ленивой загрузки архива) */
+  getOrdersSummary: async (): Promise<{ orders: { order_number: string; count: number }[] }> => {
+    const response = await fetchAPI('/v1/passports/orders-summary')
+    return response.json()
+  },
+
+  /** Паспорта для архива, опционально по номеру заказа */
+  getPublicPassports: async (page: number = 1, pageSize: number = 500, orderNumber?: string | null) => {
+    let url = `/v1/passports/public-passports?page=${page}&page_size=${pageSize}`
+    if (orderNumber != null && orderNumber !== '') {
+      url += `&order_number=${encodeURIComponent(orderNumber)}`
+    }
+    const response = await fetchAPI(url)
+    return response.json()
+  },
   
   getById: async (id: number) => {
     const response = await fetchAPI(`/v1/passports/${id}`)

@@ -63,6 +63,7 @@ scp_copy "$LOCAL_PATH/backend/main.py" "$SERVER:$SERVER_PATH/backend/" 2>&1 | gr
 scp_copy "$LOCAL_PATH/backend/models.py" "$SERVER:$SERVER_PATH/backend/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/backend/utils/pdf_generator.py" "$SERVER:$SERVER_PATH/backend/utils/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/backend/utils/sticker_template_generator.py" "$SERVER:$SERVER_PATH/backend/utils/" 2>&1 | grep -v "Warning" || true
+scp_copy "$LOCAL_PATH/backend/utils/sticker_excel_generator.py" "$SERVER:$SERVER_PATH/backend/utils/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/backend/utils/create_logo.py" "$SERVER:$SERVER_PATH/backend/utils/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/backend/requirements.txt" "$SERVER:$SERVER_PATH/backend/" 2>&1 | grep -v "Warning" || true
 
@@ -82,17 +83,24 @@ scp_copy "$LOCAL_PATH/frontend/pages/index.tsx" "$SERVER:$SERVER_PATH/frontend/p
 scp_copy "$LOCAL_PATH/frontend/next.config.js" "$SERVER:$SERVER_PATH/frontend/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/frontend/package.json" "$SERVER:$SERVER_PATH/frontend/" 2>&1 | grep -v "Warning" || true
 
+# Синхронизируем шаблоны (логотип, sticker_template)
+echo "  📤 Шаблоны (templates)..."
+ssh_exec "mkdir -p $SERVER_PATH/templates" 2>&1 | grep -v "Warning" || true
+scp_copy "$LOCAL_PATH/templates/logo.png" "$SERVER:$SERVER_PATH/templates/" 2>&1 | grep -v "Warning" || true
+[ -f "$LOCAL_PATH/templates/sticker_template.xlsx" ] && scp_copy "$LOCAL_PATH/templates/sticker_template.xlsx" "$SERVER:$SERVER_PATH/templates/" 2>&1 | grep -v "Warning" || true
+[ -f "$LOCAL_PATH/templates/sticker_template.docx" ] && scp_copy "$LOCAL_PATH/templates/sticker_template.docx" "$SERVER:$SERVER_PATH/templates/" 2>&1 | grep -v "Warning" || true
+
 # Синхронизируем конфигурационные файлы
 echo "  📤 Конфигурационные файлы..."
 scp_copy "$LOCAL_PATH/docker-compose.yml" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/Dockerfile.backend" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/Dockerfile.frontend" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/nginx.production.conf" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
-scp_copy "$LOCAL_PATH/start_server.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
-scp_copy "$LOCAL_PATH/run_backend.py" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
+scp_copy "$LOCAL_PATH/scripts/start_server.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
+[ -f "$LOCAL_PATH/run_backend.py" ] && scp_copy "$LOCAL_PATH/run_backend.py" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
 scp_copy "$LOCAL_PATH/create_admin.py" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
-scp_copy "$LOCAL_PATH/verify_deployment.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
-scp_copy "$LOCAL_PATH/check_and_fix_db.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
+scp_copy "$LOCAL_PATH/scripts/verify_deployment.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
+scp_copy "$LOCAL_PATH/scripts/check_and_fix_db.sh" "$SERVER:$SERVER_PATH/" 2>&1 | grep -v "Warning" || true
 
 # Делаем скрипты исполняемыми на сервере
 ssh_exec "chmod +x $SERVER_PATH/start_server.sh $SERVER_PATH/verify_deployment.sh $SERVER_PATH/check_and_fix_db.sh $SERVER_PATH/create_admin.py" 2>&1 | grep -v "Warning" || true

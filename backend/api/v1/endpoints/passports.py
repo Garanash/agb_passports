@@ -209,25 +209,55 @@ def debug_passports(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
+@router.get("/orders-summary", response_model=Dict)
+def get_orders_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Список заказов с количеством паспортов для ленивой загрузки архива"""
+    try:
+        from sqlalchemy import func
+        if current_user.role == "admin":
+            q = db.query(VedPassport.order_number, func.count(VedPassport.id).label("count")).group_by(VedPassport.order_number).order_by(VedPassport.order_number)
+        else:
+            q = db.query(VedPassport.order_number, func.count(VedPassport.id).label("count")).filter(
+                VedPassport.created_by == current_user.id
+            ).group_by(VedPassport.order_number).order_by(VedPassport.order_number)
+        rows = q.all()
+        orders = [{"order_number": (r.order_number or "Без заказа"), "count": r.count} for r in rows]
+        return {"orders": orders}
+    except Exception as e:
+        print(f"Ошибка при получении списка заказов: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/public-passports")
 def public_passports(
     page: int = 1,
     page_size: int = 20,
+    order_number: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Получение всех паспортов для архива с пагинацией"""
+    """Получение всех паспортов для архива с пагинацией (опционально по номеру заказа)"""
     try:
         # Админы видят все паспорта, пользователи - только свои (включая все статусы)
         if current_user.role == "admin":
             query = db.query(VedPassport).order_by(VedPassport.created_at.desc())
-            total_count = query.count()
         else:
             query = db.query(VedPassport).filter(
                 VedPassport.created_by == current_user.id
             ).order_by(VedPassport.created_at.desc())
-            total_count = query.count()
 
+        if order_number is not None and order_number.strip() != "":
+            if order_number.strip() == "Без заказа":
+                query = query.filter((VedPassport.order_number == None) | (VedPassport.order_number == ""))
+            else:
+                query = query.filter(VedPassport.order_number == order_number.strip())
+
+        total_count = query.count()
         # Применяем пагинацию
         skip = (page - 1) * page_size
         passports = query.offset(skip).limit(page_size).all()
@@ -425,36 +455,33 @@ def get_user_archive(
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
 
 @router.post("/", response_model=APIResponse)
-async def create_single_passport(
+def create_single_passport(
     passport_data: PassportCreateRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
+    db: Session = Depends(get_db)
 ):
-    """Создание одного паспорта ВЭД"""
+    """Создание одного паспорта ВЭД (синхронная сессия БД)"""
     try:
-        # Получаем номенклатуру
-        nomenclature = await db.get(VEDNomenclature, passport_data.nomenclature_id)
+        nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == passport_data.nomenclature_id).first()
         if not nomenclature:
             raise HTTPException(status_code=404, detail="Номенклатура не найдена")
-        
+
         created_passports = []
-        
+
         for i in range(passport_data.quantity):
-            # Генерируем номер паспорта
             if passport_data.passport_number:
                 passport_number = passport_data.passport_number
                 if passport_data.quantity > 1:
                     passport_number = f"{passport_data.passport_number}-{i+1:03d}"
             else:
-                passport_number = await VedPassport.generate_passport_number(
+                passport_number = VedPassport.generate_passport_number_sync(
                     db=db,
                     matrix=nomenclature.matrix or "NQ",
                     drilling_depth=nomenclature.drilling_depth,
                     article=nomenclature.article,
                     product_type=nomenclature.product_type
                 )
-            
-            # Создаем паспорт
+
             passport = VedPassport(
                 passport_number=passport_number,
                 order_number=passport_data.order_number,
@@ -465,55 +492,51 @@ async def create_single_passport(
                 created_by=current_user.id,
                 nomenclature_id=passport_data.nomenclature_id
             )
-            
+
             db.add(passport)
-            await db.flush()
-            
+            db.flush()
+
             created_passports.append({
                 "passport_id": passport.id,
                 "passport_number": passport.passport_number
             })
-        
-        await db.commit()
-        
+
+        db.commit()
+
         return APIResponse(
             success=True,
             message=f"Создано паспортов: {len(created_passports)}",
             data={"created": created_passports}
         )
-        
+
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка создания паспорта: {str(e)}")
 
 @router.post("/multiple", response_model=List[dict])
-async def create_multiple_passports(
+def create_multiple_passports(
     multiple_data: MultiplePassportCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
+    db: Session = Depends(get_db)
 ):
-    """Создание множественных паспортов ВЭД"""
+    """Создание множественных паспортов ВЭД (синхронная сессия БД)"""
     try:
         created_passports = []
-        
+
         for item in multiple_data.items:
-            # Получаем номенклатуру
-            nomenclature = await db.get(VEDNomenclature, item.nomenclature_id)
+            nomenclature = db.query(VEDNomenclature).filter(VEDNomenclature.id == item.nomenclature_id).first()
             if not nomenclature:
                 raise HTTPException(status_code=404, detail=f"Номенклатура с ID {item.nomenclature_id} не найдена")
-            
-            # Создаем паспорта для каждого количества
+
             for i in range(item.quantity):
-                # Генерируем номер паспорта
-                passport_number = await VedPassport.generate_passport_number(
+                passport_number = VedPassport.generate_passport_number_sync(
                     db=db,
                     matrix=nomenclature.matrix or "NQ",
                     drilling_depth=nomenclature.drilling_depth,
                     article=nomenclature.article,
                     product_type=nomenclature.product_type
                 )
-                
-                # Создаем паспорт
+
                 passport = VedPassport(
                     passport_number=passport_number,
                     order_number=item.order_number,
@@ -524,10 +547,10 @@ async def create_multiple_passports(
                     created_by=current_user.id,
                     nomenclature_id=item.nomenclature_id
                 )
-                
+
                 db.add(passport)
-                await db.flush()
-                
+                db.flush()
+
                 created_passports.append({
                     "id": passport.id,
                     "passport_number": passport.passport_number,
@@ -535,48 +558,46 @@ async def create_multiple_passports(
                     "order_number": item.order_number,
                     "created_at": passport.created_at.isoformat()
                 })
-        
-        await db.commit()
-        
+
+        db.commit()
+
         return created_passports
-        
+
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка создания паспортов: {str(e)}")
 
 @router.post("/bulk/", response_model=APIResponse)
-async def create_bulk_passports(
+def create_bulk_passports(
     bulk_data: BulkPassportCreate,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_async_db)
+    db: Session = Depends(get_db)
 ):
-    """Массовое создание паспортов ВЭД"""
+    """Массовое создание паспортов ВЭД (синхронная сессия БД)"""
     try:
         created_passports = []
         errors = []
-        
+
         for item in bulk_data.items:
             try:
-                # Находим номенклатуру по коду 1С
                 nomenclature = db.query(VEDNomenclature).filter(
                     VEDNomenclature.code_1c == item.code_1c,
                     VEDNomenclature.is_active == True
                 ).first()
-                
+
                 if not nomenclature:
                     errors.append(f"Номенклатура с кодом {item.code_1c} не найдена")
                     continue
-                
-                # Создаем паспорты для каждого экземпляра
+
                 for i in range(item.quantity):
-                    passport_number = await VedPassport.generate_passport_number(
+                    passport_number = VedPassport.generate_passport_number_sync(
                         db=db,
                         matrix=nomenclature.matrix or "NQ",
                         drilling_depth=nomenclature.drilling_depth,
                         article=nomenclature.article,
                         product_type=nomenclature.product_type
                     )
-                    
+
                     passport = VedPassport(
                         passport_number=passport_number,
                         order_number=bulk_data.order_number,
@@ -587,25 +608,30 @@ async def create_bulk_passports(
                         created_by=current_user.id,
                         nomenclature_id=nomenclature.id
                     )
-                    
+
                     db.add(passport)
-                    await db.flush()
-                    
+                    db.flush()
+
                     created_passports.append({
                         "id": passport.id,
                         "passport_number": passport.passport_number,
                         "order_number": passport.order_number,
-                        "nomenclature": nomenclature,
+                        "nomenclature": {
+                            "id": nomenclature.id,
+                            "code_1c": nomenclature.code_1c,
+                            "name": nomenclature.name,
+                            "matrix": nomenclature.matrix,
+                        } if nomenclature else None,
                         "quantity": 1,
                         "status": passport.status,
                         "created_at": passport.created_at.isoformat()
                     })
-                    
+
             except Exception as e:
                 errors.append(f"Ошибка при создании паспорта для {item.code_1c}: {str(e)}")
-        
-        await db.commit()
-        
+
+        db.commit()
+
         return APIResponse(
             success=True,
             message=f"Создано паспортов: {len(created_passports)}",
@@ -614,9 +640,9 @@ async def create_bulk_passports(
                 "errors": errors
             }
         )
-        
+
     except Exception as e:
-        await db.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Ошибка массового создания паспортов: {str(e)}")
 
 @router.post("/export/bulk/pdf")
